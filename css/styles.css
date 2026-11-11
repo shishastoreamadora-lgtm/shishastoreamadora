@@ -427,6 +427,13 @@ svg:not(.art):not(.logo__svg) { width: 22px; height: 22px; fill: none; stroke: c
 .qty button { width: 30px; height: 28px; font-size: 16px; }
 .qty span { min-width: 20px; text-align: center; font-weight: 600; }
 .total { display: flex; justify-content: space-between; font-size: 18px; }
+.checkout { display: grid; gap: 8px; }
+.checkout input { width: 100%; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 10px; font-size: 16px; outline: none; }
+.checkout input:focus { border-color: var(--ink); }
+.checkout__err { margin: 0; color: #b91c1c; font-size: 13px; font-weight: 600; }
+.map__load { width: 100%; height: 100%; display: grid; place-items: center; align-content: center; gap: 10px; color: #fff; background: radial-gradient(circle at 50% 40%, #2a2a2a, #161616); font-weight: 600; text-align: center; padding: 20px; }
+.map__load svg { width: 42px; height: 42px; color: var(--gold); }
+.map__load small { color: #a3a3a3; font-weight: 400; max-width: 280px; }
 
 /* ---------- Verificação de idade ---------- */
 .age-gate { position: fixed; inset: 0; z-index: 100; background: rgba(10,10,10,.85); backdrop-filter: blur(8px); display: grid; place-items: center; padding: 16px; }

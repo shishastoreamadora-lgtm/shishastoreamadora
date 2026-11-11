@@ -1,0 +1,24 @@
+# Mantém a base de dados Supabase ativa.
+# No plano gratuito, o Supabase pausa o projeto ao fim de 7 dias sem atividade.
+# Esta tarefa faz uma leitura pública do catálogo 2 vezes por semana.
+name: Manter base de dados ativa
+
+on:
+  schedule:
+    - cron: "17 9 * * 1,4"   # segundas e quintas às 09:17 UTC
+  workflow_dispatch:          # permite correr à mão em Actions → Run workflow
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ler o catálogo (chave pública)
+        run: |
+          URL=$(grep -oE 'https://[a-z0-9]+\.supabase\.co' <<< "$(curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/js/config.js)")
+          KEY=$(grep -oE 'sb_publishable_[A-Za-z0-9_-]+' <<< "$(curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/js/config.js)")
+          code=$(curl -s -o /dev/null -w "%{http_code}" "$URL/rest/v1/catalog?select=id&limit=1" -H "apikey: $KEY")
+          echo "Supabase respondeu: $code"
+          test "$code" = "200"

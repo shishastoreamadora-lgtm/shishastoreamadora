@@ -263,8 +263,12 @@ SSDB.ready.then(() => {
           </div>
         </div>
         <div class="map">
-          <iframe title="Mapa da loja" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
-            src="https://maps.google.com/maps?q=${encodeURIComponent("Rua João Hogan 6, Venda Nova, Amadora")}&z=16&output=embed"></iframe>
+          <!-- O mapa só carrega quando o cliente toca (o Google Maps usa cookies — RGPD) -->
+          <button class="map__load" id="mapLoad" data-q="${tx(STORE.morada)}">
+            <svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+            Ver o mapa da loja
+            <small>Ao tocar, o mapa do Google é carregado e pode usar cookies do Google.</small>
+          </button>
         </div>
       </div>
     </section>`;
@@ -559,20 +563,36 @@ SSDB.ready.then(() => {
         : `<p class="empty">O carrinho está vazio.</p><a class="btn btn--dark" href="#/shishas">Ver shishas</a>`;
       foot.innerHTML = cart.length ? `
         <div class="total"><span>Total</span><strong>${eur(total)}</strong></div>
-        <a class="btn btn--wa btn--lg btn--block" id="waOrder" target="_blank" rel="noopener" href="https://wa.me/${STORE.whatsapp}?text=${encodeURIComponent(waMessage(total))}">Encomendar por WhatsApp</a>
-        <p class="muted small">Pagamento e levantamento na loja: ${STORE.morada}.</p>` : "";
+        <div class="checkout">
+          <input id="ckNome" type="text" autocomplete="name" placeholder="O teu nome" maxlength="60" value="${tx(cliente.nome || "")}">
+          <input id="ckTel" type="tel" autocomplete="tel" inputmode="tel" placeholder="Telemóvel (ex.: 912 345 678)" maxlength="20" value="${tx(cliente.tel || "")}">
+          <p class="checkout__err" id="ckErr" hidden></p>
+        </div>
+        <button class="btn btn--wa btn--lg btn--block" id="waOrder">Encomendar por WhatsApp</button>
+        <p class="muted small">Pagamento e levantamento na loja: ${tx(STORE.morada)}.</p>` : "";
     }
     open($("#cartDrawer"));
   }
-  function waMessage(total) {
+  function waMessage(total, cli = {}) {
     const lines = cart.map(c => { const p = byId[c.id]; return `• ${c.qty}x ${p.nome}${c.variant ? " (" + c.variant + ")" : ""} — ${eur((priceOf(c) || 0) * c.qty)}`; });
-    return `Olá ${STORE.nome}! Gostaria de encomendar:\n${lines.join("\n")}\n\nTotal: ${eur(total)}\nLevantamento na loja.`;
+    return `Olá ${STORE.nome}! Gostaria de encomendar:\n${lines.join("\n")}\n\nTotal: ${eur(total)}\nLevantamento na loja.${cli.nome ? `\n\nNome: ${cli.nome}\nTelemóvel: ${cli.tel}` : ""}`;
   }
-  // Regista a encomenda para o back office (admin.html → Encomendas)
-  function registerOrder() {
+  // Dados do cliente (guardados só no telemóvel dele, para a próxima encomenda)
+  let cliente = store.get("ss_cliente", {});
+  // Regista a encomenda para o back office (admin.html → Encomendas) e abre o WhatsApp
+  function checkout() {
+    const nome = $("#ckNome").value.trim().replace(/\s+/g, " "), tel = $("#ckTel").value.trim();
+    const digits = tel.replace(/\D/g, "");
+    const err = (m, el) => { const e = $("#ckErr"); e.textContent = m; e.hidden = false; el.focus(); };
+    if (nome.length < 2) return err("Escreve o teu nome.", $("#ckNome"));
+    if (digits.length < 9 || digits.length > 15) return err("Escreve um número de telemóvel válido.", $("#ckTel"));
+    cliente = { nome, tel }; store.set("ss_cliente", cliente);
     const items = cart.map(c => { const p = byId[c.id]; return { id: c.id, nome: p.nome, variant: c.variant, qty: c.qty, preco: priceOf(c) || 0 }; });
     const total = items.reduce((s, i) => s + i.preco * i.qty, 0);
-    SSDB.placeOrder(items, total);
+    const url = `https://wa.me/${STORE.whatsapp}?text=${encodeURIComponent(waMessage(total, cliente))}`;
+    SSDB.placeOrder(items, total, cliente);
+    const w = window.open(url, "_blank", "noopener"); if (!w) location.href = url;
+    cart = []; saveCart(); setTimeout(() => { closeAll(); toast("Encomenda enviada! Obrigado 🙌"); }, 300);
   }
 
   /* ---------- Pesquisa ---------- */
@@ -604,7 +624,13 @@ SSDB.ready.then(() => {
     const t = e.target.closest("button, a"); if (!t) return;
 
     if (t.dataset.add) { addToCart(t.dataset.add, t.dataset.variant); return; }
-    if (t.id === "waOrder") { registerOrder(); cart = []; saveCart(); setTimeout(() => { closeAll(); toast("Encomenda enviada! Obrigado 🙌"); }, 300); return; }
+    if (t.id === "waOrder") { checkout(); return; }
+    if (t.id === "mapLoad") {
+      const f = document.createElement("iframe");
+      Object.assign(f, { title: "Mapa da loja", loading: "lazy", referrerPolicy: "no-referrer-when-downgrade",
+        src: `https://maps.google.com/maps?q=${encodeURIComponent(t.dataset.q || STORE.morada)}&z=16&output=embed` });
+      t.replaceWith(f); return;
+    }
     if (t.dataset.fav) { toggleFav(t.dataset.fav); if ($("#cartDrawer").classList.contains("is-open") && $("#drawerTitle").textContent === "Favoritos") openDrawer("fav"); return; }
     if (t.dataset.qty != null && t.dataset.d) {
       const c = cart[+t.dataset.qty]; c.qty += +t.dataset.d; if (c.qty <= 0) cart.splice(+t.dataset.qty, 1);

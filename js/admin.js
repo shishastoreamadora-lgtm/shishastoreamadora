@@ -62,7 +62,7 @@
     }
     if (set.data?.store) db.store = { ...db.store, ...set.data.store };
     else await sb.from("settings").upsert({ id: 1, store: publicStore() });
-    if (!ord.error) orders = ord.data.map(o => ({ n: o.n, data: o.created_at, items: o.items, total: Number(o.total), estado: o.estado, canal: o.canal, exemplo: o.exemplo }));
+    if (!ord.error) orders = ord.data.map(o => ({ n: o.n, data: o.created_at, items: o.items, total: Number(o.total), estado: o.estado, canal: o.canal, exemplo: o.exemplo, cliente: o.cliente }));
   }
   const publicStore = () => { const s = { ...db.store }; delete s.pin; return s; };
   async function uploadOne(dataUrl, name) {
@@ -118,7 +118,7 @@
   async function refreshOrders() {
     if (!LIVE) return;
     const r = await sb.from("orders").select("*").order("created_at", { ascending: false }).limit(500);
-    if (!r.error) orders = r.data.map(o => ({ n: o.n, data: o.created_at, items: o.items, total: Number(o.total), estado: o.estado, canal: o.canal, exemplo: o.exemplo }));
+    if (!r.error) orders = r.data.map(o => ({ n: o.n, data: o.created_at, items: o.items, total: Number(o.total), estado: o.estado, canal: o.canal, exemplo: o.exemplo, cliente: o.cliente }));
   }
 
   /* ---------- Ajudas de produto ---------- */
@@ -869,9 +869,9 @@
         ${Object.entries(ESTADOS).map(([k, v]) => `<button data-estado="${k}" class="${state.estado === k ? "is-on" : ""}">${v} <i>${counts[k]}</i></button>`).join("")}
       </div></div>
       <div class="card table-wrap">${list.length ? `<table class="t">
-        <thead><tr><th>Nº</th><th>Data</th><th>Produtos</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Produtos</th><th>Total</th><th>Estado</th><th></th></tr></thead>
         <tbody>${list.map(o => `<tr style="cursor:pointer" data-order="${o.n}">
-          <td><strong>#${o.n}</strong></td><td>${fmtDate(o.data)}</td>
+          <td><strong>#${o.n}</strong></td><td>${fmtDate(o.data)}</td><td>${o.cliente ? `<strong>${esc(o.cliente.nome)}</strong><br><span class="muted">${esc(o.cliente.tel)}</span>` : `<span class="muted">—</span>`}</td>
           <td>${esc(o.items.map(i => `${i.qty}× ${i.nome}${i.variant ? " (" + i.variant + ")" : ""}`).join(", "))}</td>
           <td class="price">${eur(o.total)}</td><td><span class="pill st-${o.estado}">${ESTADOS[o.estado]}</span></td>
           <td><div class="actions"><button class="icon-btn" title="Ver">${I.eye}</button></div></td></tr>`).join("")}</tbody></table>`
@@ -880,9 +880,11 @@
   function openOrder(n) {
     const o = orders.find(x => x.n === +n); if (!o) return;
     $("#panelTitle").textContent = `Encomenda #${o.n}`;
-    const msg = `Olá! A sua encomenda #${o.n} na ${db.store.nome} está ${ESTADOS[o.estado].toLowerCase()}. Total: ${eur(o.total)}. Obrigado!`;
+    const telCli = (o.cliente?.tel || "").replace(/\D/g, ""), telWa = telCli.length === 9 ? "351" + telCli : telCli;
+    const msg = `Olá${o.cliente?.nome ? " " + o.cliente.nome.split(" ")[0] : ""}! A sua encomenda #${o.n} na ${db.store.nome} está ${ESTADOS[o.estado].toLowerCase()}. Total: ${eur(o.total)}. Obrigado!`;
     $("#panelBody").innerHTML = `
       <p class="muted" style="margin-top:0">${fmtDate(o.data)} · via ${esc(o.canal || "WhatsApp")}</p>
+      ${o.cliente ? `<div class="note" style="margin-bottom:16px">👤<div><b>${esc(o.cliente.nome)}</b><br><a href="tel:${esc(o.cliente.tel)}">${esc(o.cliente.tel)}</a></div></div>` : ""}
       <div class="section-title" style="margin-bottom:8px">Estado</div>
       <div class="steps" id="ordSteps">${Object.entries(ESTADOS).map(([k, v]) => `<button data-set-estado="${k}" class="${o.estado === k ? "is-on" : ""}">${v}</button>`).join("")}</div>
       <div class="section-title" style="margin:22px 0 4px">Produtos</div>
@@ -891,7 +893,7 @@
       <div class="note" style="margin-top:22px">${I.info}<div>Pagamento e levantamento na loja: ${esc(db.store.morada)}.</div></div>`;
     $("#panelFoot").innerHTML = `
       <button class="btn btn--danger spacer" data-del-order="${o.n}">${I.trash} Apagar</button>
-      <a class="btn btn--ghost" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg)}">${I.wa} Avisar cliente</a>
+      <a class="btn btn--ghost" target="_blank" rel="noopener" href="https://wa.me/${telWa}?text=${encodeURIComponent(msg)}">${I.wa} ${telWa ? "Avisar cliente" : "Enviar por WhatsApp"}</a>
       <button class="btn btn--dark" data-close>Fechar</button>`;
     $("#panel").classList.add("is-open"); $("#overlay").classList.add("is-on");
     editing = null; $("#panel").dataset.order = o.n;

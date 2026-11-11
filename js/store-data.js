@@ -77,17 +77,17 @@ window.SSDB = (() => {
   }
 
   // Encomenda feita no carrinho
-  async function placeOrder(items, total) {
+  async function placeOrder(items, total, cliente = null) {
     if (!live) {
       let orders = [];
       try { orders = JSON.parse(localStorage.getItem("ss_orders")) || []; } catch {}
       const n = orders.reduce((m, o) => Math.max(m, o.n || 0), 1000) + 1;
-      orders.unshift({ n, data: new Date().toISOString(), items, total, estado: "nova", canal: "WhatsApp" });
+      orders.unshift({ n, data: new Date().toISOString(), items, total, estado: "nova", canal: "WhatsApp", cliente });
       try { localStorage.setItem("ss_orders", JSON.stringify(orders)); } catch {}
       return;
     }
     try {
-      await rest("orders", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ items, total: Math.round(total * 100) / 100 }) });
+      await rest("orders", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ items: items.map(({ id, variant, qty }) => ({ id, variant, qty })), total: Math.round(total * 100) / 100, ...(cliente ? { cliente: { nome: String(cliente.nome).slice(0, 60), tel: String(cliente.tel).slice(0, 20) } } : {}) }) });
     } catch (e) { console.warn("Não foi possível registar a encomenda.", e); }
   }
 
