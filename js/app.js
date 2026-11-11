@@ -57,6 +57,36 @@ SSDB.ready.then(() => {
     star: `<svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>`,
   };
 
+  /* ---------- Cores (variantes) e opiniões ---------- */
+  const coresOf = (p) => p.tipo === "shisha" && Array.isArray(p.cores) ? p.cores.filter(c => c && c.nome) : [];
+  const REV = SSDB.REVIEWS;
+  const revOf = (id) => REV.filter(r => r.produto === id);
+  const avgOf = (list) => list.length ? list.reduce((s, r) => s + r.estrelas, 0) / list.length : 0;
+  const num1 = (n) => n.toLocaleString("pt-PT", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const starsHTML = (n) => `<span class="stars" role="img" aria-label="${num1(n)} de 5 estrelas">${[1, 2, 3, 4, 5].map(i => `<i class="${i <= Math.round(n) ? "on" : ""}">★</i>`).join("")}</span>`;
+  const fmtDia = (iso) => new Date(iso).toLocaleDateString("pt-PT", { day: "numeric", month: "long", year: "numeric" });
+  function reviewHTML(r, showProd = false) {
+    const prod = showProd && r.produto && byId[r.produto];
+    return `<article class="review">
+      <div class="review__top">${starsHTML(r.estrelas)}<span class="muted small">${fmtDia(r.data)}</span></div>
+      <p class="review__txt">${tx(r.texto)}</p>
+      <div class="review__who"><span class="review__av">${tx((r.nome || "?")[0].toUpperCase())}</span><strong>${tx(r.nome)}</strong>${prod ? `<a class="muted small" href="#/p/${prod.id}">· ${tx(prod.nome)}</a>` : ""}</div>
+      ${r.resposta ? `<div class="review__reply"><strong>Resposta da loja</strong><p>${tx(r.resposta)}</p></div>` : ""}
+    </article>`;
+  }
+  function reviewForm(produto = "") {
+    return `<form class="rform" data-rform="${produto}" novalidate>
+      <h3>Deixa a tua opinião</h3>
+      <div class="rform__stars" role="group" aria-label="Quantas estrelas?">${[1, 2, 3, 4, 5].map(i => `<button type="button" data-rstar="${i}" aria-label="${i} estrela${i > 1 ? "s" : ""}">★</button>`).join("")}</div>
+      <input name="nome" type="text" maxlength="40" autocomplete="given-name" placeholder="O teu nome" value="${tx(cliente.nome || "")}">
+      <textarea name="texto" maxlength="600" rows="3" placeholder="${produto ? "O que achaste deste produto?" : "Como foi a tua experiência na loja?"}"></textarea>
+      <input name="site" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <p class="checkout__err" hidden></p>
+      <button class="btn btn--dark" type="submit">Enviar opinião</button>
+      <p class="muted small">As opiniões são lidas pela loja antes de serem publicadas.</p>
+    </form>`;
+  }
+
   /* ---------- Tarjeta de producto (estilo The Premium Way) ---------- */
   function card(p) {
     const fav = favs.includes(p.id);
@@ -68,8 +98,14 @@ SSDB.ready.then(() => {
         <span class="card__brand">${p.marca}</span>
         <a class="card__name" href="#/p/${p.id}">${p.nome}${p.tipo === "shisha" ? ` <span class="muted">· ${p.altura} cm</span>` : ""}</a>
         <span class="card__price">${eur(p.preco)}</span>
+        ${cardExtras(p)}
       </div>
     </article>`;
+  }
+  function cardExtras(p) {
+    const cs = coresOf(p), rv = revOf(p.id);
+    return (cs.length > 1 ? `<span class="card__colors" title="${cs.length} cores">${cs.slice(0, 5).map(c => `<i style="background:${safeCor(c.hex, "#999999")}"></i>`).join("")}${cs.length > 5 ? `<small>+${cs.length - 5}</small>` : ""}</span>` : "")
+      + (rv.length ? `<span class="card__rating"><b>★</b> ${num1(avgOf(rv))} <span class="muted">(${rv.length})</span></span>` : "");
   }
 
   /* ---------- Tarjeta de essência (estilo Hookah.com) ---------- */
@@ -106,8 +142,7 @@ SSDB.ready.then(() => {
   const grad = (c, deg = 120) => `linear-gradient(${deg}deg, ${Art.shade(c, -50)} 0%, ${c} 55%, ${Art.shade(c, 60)} 100%)`;
   function homeCfg() {
     const h = STORE.home || {}, d = HOME_DEFAULT, arr = (k) => Array.isArray(h[k]) ? h[k] : d[k];
-    const secoes = Array.isArray(h.secoes) ? [...h.secoes] : [];
-    d.secoes.forEach(s => { if (!secoes.some(x => x.id === s.id)) secoes.push({ ...s }); });
+    const secoes = mergeSecoes(h.secoes);
     return {
       slides: arr("slides"), promos: arr("promos"), categorias: arr("categorias"), novidades: arr("novidades"),
       faixa: { ...d.faixa, ...(h.faixa || {}) }, ambiente: { ...d.ambiente, ...(h.ambiente || {}) }, secoes,
@@ -205,6 +240,15 @@ SSDB.ready.then(() => {
           <div class="section__head"><h2 class="h2">Compra por marca</h2></div>
           ${brandRow()}
         </section>`,
+      opinioes: () => { const list = REV.slice(0, 6), avg = avgOf(REV); return `
+        <section class="container section">
+          <div class="section__head">
+            <div><h2 class="h2">O que dizem os clientes</h2>${list.length ? `<p class="rsum">${starsHTML(avg)} <b>${num1(avg)}</b> de 5 · ${REV.length} opini${REV.length === 1 ? "ão" : "ões"}</p>` : ""}</div>
+            <a class="link" href="#/opinioes">${list.length ? "Ver todas →" : "Deixar opinião →"}</a>
+          </div>
+          ${list.length ? `<div class="reviews__cards">${list.map(r => reviewHTML(r, true)).join("")}</div>`
+            : `<a class="rempty" href="#/opinioes"><span class="rempty__stars">★★★★★</span><strong>Já nos visitaste?</strong><span class="muted">Conta-nos como foi — a tua opinião ajuda outros clientes.</span></a>`}
+        </section>`; },
       loja: () => lojaHTML(),
     };
 
@@ -401,6 +445,16 @@ SSDB.ready.then(() => {
     </div></section>
     <section class="container section">${packsHTML()}</section>`;
   views.loja = () => lojaHTML();
+  views.opinioes = () => { const avg = avgOf(REV); return `
+    <section class="container section">
+      <nav class="crumbs"><a href="#/">Início</a> / <span>Opiniões</span></nav>
+      <h1 class="h2">Opiniões de clientes</h1>
+      ${REV.length ? `<p class="rsum rsum--big">${starsHTML(avg)} <b>${num1(avg)}</b> de 5 · ${REV.length} opini${REV.length === 1 ? "ão" : "ões"}</p>` : `<p class="muted">Ainda não há opiniões publicadas. Sê o primeiro!</p>`}
+      <div class="reviews__grid">
+        <div class="reviews__list">${REV.map(r => reviewHTML(r, true)).join("")}</div>
+        ${reviewForm()}
+      </div>
+    </section>`; };
 
   /* ---------- PÁGINAS LEGAIS ---------- */
   const fill = (v, ph) => v ? v : `<em class="muted">[${ph}]</em>`;
@@ -441,6 +495,9 @@ SSDB.ready.then(() => {
     if (!p) return `<section class="container section"><h1>Produto não encontrado</h1><a class="link" href="#/">Voltar ao início</a></section>`;
     const back = { shisha: ["Shishas", "shishas"], essencia: ["Essências", "essencias"], carvao: ["Carvão", "carvao"], acessorio: ["Acessórios", "acessorios"], pack: ["Packs", "packs"] }[p.tipo];
     const sizes = p.precos ? Object.keys(p.precos) : null;
+    const cores = coresOf(p), ci = cores.findIndex(c => !c.esgotada), cor = cores[ci];
+    const semCor = cores.length > 0 && ci === -1;   // todas as cores esgotadas
+    const revs = revOf(p.id), avg = avgOf(revs);
     const related = ALL.filter(x => x.tipo === p.tipo && x.id !== p.id).slice(0, 4);
     const specs = p.tipo === "shisha"
       ? [["Marca", p.marca], ["Altura", p.altura + " cm"], ["Estilo", { moderno: "Moderna", tradicional: "Tradicional", led: "Com LED", portatil: "Portátil" }[p.estilo]], ["Inclui", p.inclui]]
@@ -451,24 +508,34 @@ SSDB.ready.then(() => {
     <section class="container product">
       <nav class="crumbs"><a href="#/">Início</a> / <a href="#/${back[1]}">${back[0]}</a> / <span>${p.nome}</span></nav>
       <div class="product__grid">
-        <div class="product__img ${p.img ? "has-photo" : ""}" style="--c:${p.cor}">${img(p)}</div>
+        <div class="product__img ${p.img || safeImg(cor?.img) ? "has-photo" : ""}" id="pImg" style="--c:${p.cor}">${safeImg(cor?.img) ? `<img src="${safeImg(cor.img)}" alt="${tx(p.nome)} ${tx(cor.nome)}">` : img(p)}</div>
         <div class="product__info">
           <span class="card__brand">${p.marca}</span>
           <h1>${p.nome}</h1>
+          ${revs.length ? `<button class="prating" data-goto="rev">${starsHTML(avg)} ${num1(avg)} · ${revs.length} opini${revs.length === 1 ? "ão" : "ões"}</button>` : ""}
           <div class="product__price" id="pPrice">${eur(sizes ? p.precos[sizes[0]] : p.preco)}</div>
+          ${cores.length ? `<div class="label">Cor: <b id="pCorNome">${tx(cor ? cor.nome : "esgotada")}</b></div>
+          <div class="swatches" id="pCores">${cores.map((c, i) => `<button class="swatch ${i === ci ? "is-on" : ""}" data-pcor="${i}" style="--sw:${safeCor(c.hex, "#999999")}" title="${tx(c.nome)}${c.esgotada ? " (esgotada)" : ""}" aria-label="${tx(c.nome)}${c.esgotada ? " (esgotada)" : ""}" ${c.esgotada ? "disabled" : ""}></button>`).join("")}</div>` : ""}
           ${sizes ? `<div class="label">Tamanho</div><div class="chips" id="pSizes">${sizes.map((s, i) => `<button class="chip ${i === 0 ? "is-on" : ""}" data-psize="${s}">${s}</button>`).join("")}</div>` : ""}
           <table class="specs">${specs.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join("")}</table>
           <div class="product__actions">
             ${p.preco == null
               ? `<a class="btn btn--dark btn--lg" href="https://wa.me/${STORE.whatsapp}?text=${encodeURIComponent(`Olá! Qual o preço da ${p.nome} (${p.altura} cm)?`)}" target="_blank" rel="noopener">Pedir preço no WhatsApp</a>`
-              : p.esgotado ? `<button class="btn btn--ghost btn--lg" disabled>Esgotado de momento</button>`
-              : `<button class="btn btn--dark btn--lg" data-add="${p.id}" ${sizes ? `data-variant="${sizes[0]}"` : ""} id="pAdd">Adicionar ao carrinho</button>`}
+              : p.esgotado || semCor ? `<button class="btn btn--ghost btn--lg" disabled>Esgotado de momento</button>`
+              : `<button class="btn btn--dark btn--lg" data-add="${p.id}" ${sizes ? `data-variant="${sizes[0]}"` : cor ? `data-variant="${tx(cor.nome)}"` : ""} id="pAdd">Adicionar ao carrinho</button>`}
             <button class="btn btn--ghost btn--lg ${favs.includes(p.id) ? "is-on" : ""}" data-fav="${p.id}">${heart} Favorito</button>
           </div>
           <ul class="product__perks">
             <li>${icons.store} Levantamento na loja — Venda Nova, Amadora</li>
             <li>${icons.chat} Dúvidas? Fala connosco no WhatsApp ${STORE.telefone}</li>
           </ul>
+        </div>
+      </div>
+      <div class="section reviews" id="rev">
+        <div class="section__head"><div><h2 class="h2">Opiniões</h2>${revs.length ? `<p class="rsum">${starsHTML(avg)} <b>${num1(avg)}</b> de 5 · ${revs.length} opini${revs.length === 1 ? "ão" : "ões"}</p>` : ""}</div></div>
+        <div class="reviews__grid">
+          <div class="reviews__list">${revs.length ? revs.map(r => reviewHTML(r)).join("") : `<p class="muted">Ainda não há opiniões sobre este produto. Já o tens? Conta-nos o que achaste.</p>`}</div>
+          ${reviewForm(p.id)}
         </div>
       </div>
       ${related.length ? `<div class="section"><h2 class="h2">Também podes gostar</h2><div class="grid grid--4">${(p.tipo === "essencia" ? related.map(essCard) : related.map(card)).join("")}</div></div>` : ""}
@@ -555,9 +622,9 @@ SSDB.ready.then(() => {
     } else {
       $("#drawerTitle").textContent = "O teu carrinho";
       const total = cart.reduce((s, c) => s + (priceOf(c) || 0) * c.qty, 0);
-      body.innerHTML = cart.length ? cart.map((c, idx) => { const p = byId[c.id]; return `
-        <div class="line"><a class="line__img" href="#/p/${p.id}">${img(p)}</a>
-          <div class="line__info"><strong>${p.nome}</strong><span class="muted">${p.marca}${c.variant ? " · " + c.variant : ""}</span>
+      body.innerHTML = cart.length ? cart.map((c, idx) => { const p = byId[c.id], ci = coresOf(p).find(x => x.nome === c.variant); return `
+        <div class="line"><a class="line__img" href="#/p/${p.id}">${safeImg(ci?.img) ? `<img src="${safeImg(ci.img)}" alt="">` : img(p)}</a>
+          <div class="line__info"><strong>${p.nome}</strong><span class="muted">${p.marca}${c.variant ? " · " + (ci ? "Cor: " : "") + tx(c.variant) : ""}</span>
             <div class="qty"><button data-qty="${idx}" data-d="-1" aria-label="Menos">−</button><span>${c.qty}</span><button data-qty="${idx}" data-d="1" aria-label="Mais">+</button></div></div>
           <strong>${eur((priceOf(c) || 0) * c.qty)}</strong></div>`; }).join("")
         : `<p class="empty">O carrinho está vazio.</p><a class="btn btn--dark" href="#/shishas">Ver shishas</a>`;
@@ -574,7 +641,7 @@ SSDB.ready.then(() => {
     open($("#cartDrawer"));
   }
   function waMessage(total, cli = {}) {
-    const lines = cart.map(c => { const p = byId[c.id]; return `• ${c.qty}x ${p.nome}${c.variant ? " (" + c.variant + ")" : ""} — ${eur((priceOf(c) || 0) * c.qty)}`; });
+    const lines = cart.map(c => { const p = byId[c.id]; return `• ${c.qty}x ${p.nome}${c.variant ? ` (${coresOf(p).some(x => x.nome === c.variant) ? "cor " : ""}${c.variant})` : ""} — ${eur((priceOf(c) || 0) * c.qty)}`; });
     return `Olá ${STORE.nome}! Gostaria de encomendar:\n${lines.join("\n")}\n\nTotal: ${eur(total)}\nLevantamento na loja.${cli.nome ? `\n\nNome: ${cli.nome}\nTelemóvel: ${cli.tel}` : ""}`;
   }
   // Dados do cliente (guardados só no telemóvel dele, para a próxima encomenda)
@@ -642,6 +709,20 @@ SSDB.ready.then(() => {
       $("[data-price]", art).textContent = eur(p.precos[t.dataset.size]);
       $("[data-add]", art).dataset.variant = t.dataset.size; return;
     }
+    if (t.dataset.pcor != null) { // cor na página de produto
+      const p = byId[parse().arg], c = coresOf(p)[+t.dataset.pcor]; if (!c) return;
+      $$("#pCores .swatch").forEach(b => b.classList.toggle("is-on", b === t));
+      $("#pCorNome").textContent = c.nome;
+      if ($("#pAdd")) $("#pAdd").dataset.variant = c.nome;
+      const box = $("#pImg"), src = safeImg(c.img);
+      box.innerHTML = src ? `<img src="${src}" alt="${tx(p.nome)} ${tx(c.nome)}">` : img(p);
+      box.classList.toggle("has-photo", !!(src || p.img)); return;
+    }
+    if (t.dataset.rstar) { // estrelas no formulário de opinião
+      const f = t.closest("[data-rform]"), v = +t.dataset.rstar; f.dataset.val = v;
+      $$("[data-rstar]", f).forEach(b => b.classList.toggle("is-on", +b.dataset.rstar <= v)); return;
+    }
+    if (t.dataset.goto) { $("#" + t.dataset.goto)?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
     if (t.dataset.psize) { // tamanho na página de produto
       const p = byId[parse().arg];
       $$("#pSizes .chip").forEach(b => b.classList.toggle("is-on", b === t));
@@ -662,6 +743,24 @@ SSDB.ready.then(() => {
       case "favBtn": openDrawer("fav"); break;
       case "searchBtn": { const sb = $("#searchbar"); const show = sb.hidden; closeAll(); sb.hidden = !show; if (show) $("#searchInput").focus(); break; }
     }
+  });
+  // Enviar opinião
+  document.addEventListener("submit", async (e) => {
+    const f = e.target.closest("[data-rform]"); if (!f) return;
+    e.preventDefault();
+    const err = (m) => { const x = $(".checkout__err", f); x.textContent = m; x.hidden = !m; };
+    if (f.elements.site.value) return;   // robô
+    const estrelas = +f.dataset.val || 0, nome = f.elements.nome.value.trim().replace(/\s+/g, " "), texto = f.elements.texto.value.trim();
+    if (!estrelas) return err("Escolhe de 1 a 5 estrelas.");
+    if (nome.length < 2) return err("Escreve o teu nome.");
+    if (texto.length < 3) return err("Escreve a tua opinião.");
+    const sent = store.get("ss_rev_sent", []).filter(t => Date.now() - t < 864e5);
+    if (sent.length >= 3) return err("Já deixaste várias opiniões hoje. Obrigado!");
+    const btn = $('button[type="submit"]', f); btn.disabled = true; btn.textContent = "A enviar…"; err("");
+    const res = await SSDB.sendReview({ produto: f.dataset.rform || null, nome, estrelas, texto });
+    if (!res.ok) { btn.disabled = false; btn.textContent = "Enviar opinião"; return err(res.msg); }
+    store.set("ss_rev_sent", [...sent, Date.now()]);
+    f.innerHTML = `<div class="rform__ok"><strong>Obrigado, ${tx(nome.split(" ")[0])}! 🙌</strong><p class="muted">A tua opinião foi enviada e aparece na loja depois de ser aprovada.</p></div>`;
   });
   $("#overlay").addEventListener("click", closeAll);
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeAll(); });

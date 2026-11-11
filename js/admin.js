@@ -34,6 +34,8 @@
     acessorios: clone(ACESSORIOS), packs: clone(PACKS), store: clone(STORE),
   };
   let orders = ls.get("ss_orders", []);
+  let reviews = SSDB.live ? [] : ls.get("ss_reviews", []);   // opiniões de clientes
+  let reviewsMissing = false;                                 // falta correr supabase/003-opinioes.sql
 
   /* =========================================================
      BASE DE DADOS (Supabase) — modo real
@@ -50,6 +52,7 @@
       sb.from("catalog").select("id,cat,pos,data").order("pos"),
       sb.from("settings").select("store").eq("id", 1).maybeSingle(),
       sb.from("orders").select("*").order("created_at", { ascending: false }).limit(500),
+      refreshReviews(),
     ]);
     if (cat.error) throw cat.error;
     if (cat.data.length) {
@@ -77,6 +80,7 @@
   async function uploadPhotos() {
     for (const p of allProducts().map(x => x.p)) {
       if (p.img && p.img.startsWith("data:")) p.img = await uploadOne(p.img, p.id);
+      for (const c of p.cores || []) if (c.img && c.img.startsWith("data:")) c.img = await uploadOne(c.img, p.id + "-cor");
     }
     // fotos da página inicial (carrossel, banners, categorias, ambiente)
     const walk = async (o) => {
@@ -120,6 +124,24 @@
     const r = await sb.from("orders").select("*").order("created_at", { ascending: false }).limit(500);
     if (!r.error) orders = r.data.map(o => ({ n: o.n, data: o.created_at, items: o.items, total: Number(o.total), estado: o.estado, canal: o.canal, exemplo: o.exemplo, cliente: o.cliente }));
   }
+
+  /* ---------- Opiniões ---------- */
+  async function refreshReviews() {
+    if (!LIVE) { reviews = ls.get("ss_reviews", []); return; }
+    const r = await sb.from("reviews").select("*").order("created_at", { ascending: false }).limit(500);
+    reviewsMissing = !!r.error;
+    if (!r.error) reviews = r.data;
+  }
+  const saveReviewsLocal = () => { if (!LIVE) ls.set("ss_reviews", reviews); };
+  async function updateReview(rv, patch) {
+    if (LIVE) { const r = await sb.from("reviews").update(patch).eq("id", rv.id); if (r.error) { toast("Não foi possível guardar", true); return false; } }
+    Object.assign(rv, patch); saveReviewsLocal(); return true;
+  }
+  async function deleteReview(id) {
+    if (LIVE) { const r = await sb.from("reviews").delete().eq("id", id); if (r.error) { toast("Não foi possível apagar", true); return false; } }
+    reviews = reviews.filter(x => x.id !== id); saveReviewsLocal(); return true;
+  }
+  const pendingReviews = () => reviews.filter(r => !r.aprovado).length;
 
   /* ---------- Ajudas de produto ---------- */
   const nameOf = (p) => p.nome || p.sabor || "Sem nome";
@@ -223,6 +245,7 @@
     const n = orders.filter(o => o.estado === "nova").length;
     $("#newOrders").textContent = n; $("#newOrders").hidden = !n;
     $("#newOrders2").textContent = n; $("#newOrders2").hidden = !n;
+    const nr = pendingReviews(); $("#newReviews").textContent = nr; $("#newReviews").hidden = !nr;
     window.scrollTo(0, 0);
   }
   window.addEventListener("hashchange", () => { closePanel(); render(); });
@@ -298,7 +321,8 @@
         </div>
         <div class="card">
           <div class="card__head"><h3>Precisa de atenção</h3></div>
-          ${out.length || toConfirm.length ? `<ul class="list">
+          ${out.length || toConfirm.length || pendingReviews() ? `<ul class="list">
+            ${pendingReviews() ? `<li><a href="#/opinioes" class="list__link"><span class="thumb" style="background:#fdf3e1;color:#8c6d3f">★</span><div class="list__main"><strong>${pendingReviews()} opini${pendingReviews() > 1 ? "ões" : "ão"} por aprovar</strong><span>Lê e publica na loja</span></div><span class="pill st-nova">Ver</span></a></li>` : ""}
             ${out.map(({ p }) => `<li style="cursor:pointer" data-edit="${p.id}">${thumb(p)}<div class="list__main"><strong>${esc(nameOf(p))}</strong><span>Sem stock</span></div><span class="pill st-esgotado">Esgotado</span></li>`).join("")}
             ${toConfirm.slice(0, 6).map(({ p }) => `<li style="cursor:pointer" data-edit="${p.id}">${thumb(p)}<div class="list__main"><strong>${esc(nameOf(p))}</strong><span>Preço por confirmar</span></div><span class="pill st-confirmada">Confirmar</span></li>`).join("")}
             ${toConfirm.length > 6 ? `<li><span class="muted">+ ${toConfirm.length - 6} produtos com preço por confirmar</span></li>` : ""}
@@ -344,7 +368,7 @@
     if (f === "confirmar") list = list.filter(({ p }) => p.confirmar);
     $("#rows").innerHTML = list.length ? list.map(({ p, cat }) => `
       <tr class="${p.oculto ? "is-hidden" : ""}">
-        <td class="td-prod"><div class="prod" style="cursor:pointer" data-edit="${p.id}">${thumb(p)}<div><strong>${esc(nameOf(p))}</strong><span>${esc(p.marca || "")}${p.altura ? ` · ${p.altura} cm` : ""}</span></div></div></td>
+        <td class="td-prod"><div class="prod" style="cursor:pointer" data-edit="${p.id}">${thumb(p)}<div><strong>${esc(nameOf(p))}</strong><span>${esc(p.marca || "")}${p.altura ? ` · ${p.altura} cm` : ""}${p.cores?.length ? ` · ${p.cores.length} cor${p.cores.length > 1 ? "es" : ""}` : ""}</span></div></div></td>
         <td data-label="Categoria">${CATS[cat].label}</td>
         <td data-label="Preço" class="price">${p.precos
           ? Object.entries(p.precos).map(([k, v]) => `<button class="price-btn" data-price="${p.id}" data-size="${k}" title="Tocar para mudar">${eur(v)} <span class="muted">${k}</span> ${I.pen}</button>`).join("")
@@ -440,6 +464,7 @@
           ${cat === "packs" ? "" : fld("marca", "Marca", p.marca)}
         </div>
         ${specific}
+        ${cat === "shishas" ? `<div class="section-title">Cores <small class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">(opcional)</small></div><div id="coresBox">${coresHTML()}</div>` : ""}
         <div class="section-title">${isNew ? "4. " : ""}Na loja</div>
         <div class="toggles">
           <label class="switch"><input type="checkbox" name="stock" ${p.esgotado ? "" : "checked"}><i></i><span><b>Disponível</b><small>Desliga quando esgotar</small></span></label>
@@ -477,6 +502,23 @@
     $("#rmPhoto")?.addEventListener("click", () => { readForm(); editing.p.img = null; editing.img = null; editing.p._semFoto = true; drawEditor(); });
   }
 
+  const COR_PRESETS = [["Preto", "#111111"], ["Branco", "#f5f5f5"], ["Dourado", "#c9a227"], ["Prateado", "#bfc3c7"], ["Azul", "#2563eb"], ["Vermelho", "#dc2626"], ["Verde", "#16a34a"], ["Rosa", "#ec4899"], ["Roxo", "#7c3aed"], ["Laranja", "#ea580c"]];
+  function coresHTML() {
+    const cs = editing.p.cores || [];
+    return `${cs.length ? `<div class="cores">${cs.map((c, i) => `
+      <div class="cor-row ${c.esgotada ? "is-off" : ""}">
+        <input type="color" data-cor="${i}" data-k="hex" value="${esc(/^#[0-9a-f]{6}$/i.test(c.hex || "") ? c.hex : "#111111")}" aria-label="Escolher a cor">
+        <input type="text" data-cor="${i}" data-k="nome" value="${esc(c.nome)}" placeholder="Nome da cor" maxlength="30" aria-label="Nome da cor">
+        <label class="cor-photo" title="${c.img ? "Trocar a foto desta cor" : "Foto desta cor (opcional)"}">${c.img ? `<img src="${esc(c.img)}" alt="">` : "📷"}<input type="file" accept="image/*" data-corfile="${i}" hidden></label>
+        <label class="switch" title="Disponível"><input type="checkbox" data-cor="${i}" data-k="stock" ${c.esgotada ? "" : "checked"}><i></i></label>
+        <button type="button" class="icon-btn" data-cordel="${i}" title="Apagar esta cor">${I.trash}</button>
+      </div>`).join("")}</div>
+      <small class="muted">📷 foto dessa cor (opcional) · interruptor desligado = cor esgotada.</small>`
+      : `<p class="muted small" style="margin:0 0 8px">Se esta shisha existe em várias cores, junta-as aqui. O cliente escolhe a cor na loja e ela aparece na encomenda.</p>`}
+      <div class="cor-presets">${COR_PRESETS.map(([n, h]) => `<button type="button" class="cor-chip" data-coradd="${n}|${h}"><i style="background:${h}"></i>${n}</button>`).join("")}<button type="button" class="cor-chip" data-coradd="|#888888">${I.plus} Outra cor</button></div>`;
+  }
+  const redrawCores = () => { const b = $("#coresBox"); if (b) b.innerHTML = coresHTML(); };
+
   function readForm() {
     const form = $("#prodForm"); if (!form) return;
     const v = (n) => form.elements[n]?.value?.trim();
@@ -505,7 +547,13 @@
     if (cat === "essencias" && !Object.keys(p.precos || {}).length) { toast("Indica pelo menos um preço", true); return; }
     if (cat === "packs" && !p.inclui.length) p.inclui = ["Shisha"];
     // limpar campos de outras categorias (ao trocar de tipo num produto novo)
-    if (cat !== "shishas") { delete p.altura; delete p.estilo; if (cat !== "packs") delete p.inclui; }
+    if (cat !== "shishas") { delete p.altura; delete p.estilo; delete p.cores; if (cat !== "packs") delete p.inclui; }
+    else {
+      const seen = new Set();
+      p.cores = (p.cores || []).map(c => ({ nome: String(c.nome || "").replace(/[<>|]/g, "").trim().slice(0, 30), hex: /^#[0-9a-f]{6}$/i.test(c.hex || "") ? c.hex : "#888888", ...(c.img ? { img: c.img } : {}), ...(c.esgotada ? { esgotada: true } : {}) }))
+        .filter(c => c.nome && !seen.has(c.nome.toLowerCase()) && seen.add(c.nome.toLowerCase()));
+      if (!p.cores.length) delete p.cores;
+    }
     if (cat !== "essencias") { delete p.notas; delete p.precos; delete p.sabor; }
     if (cat === "packs") delete p.marca;
     // foto removida → impedir que a foto original volte a aparecer
@@ -685,15 +733,14 @@
   const SEC_LABEL = {
     categorias: ["🗂️", "Explora por categoria"], garantias: ["✅", "Garantias (levantamento, pagamento…)"], novidades: ["✨", "Novidades"],
     essencias: ["🍉", "Essências Adalya"], packs: ["📦", "Packs completos"], ambiente: ["🌆", "Monta a sessão perfeita"],
-    marcas: ["🏷️", "Compra por marca"], loja: ["📍", "Loja física e mapa"],
+    marcas: ["🏷️", "Compra por marca"], opinioes: ["⭐", "Opiniões de clientes"], loja: ["📍", "Loja física e mapa"],
   };
-  const LINK_PAGES = [["", "Início"], ["shishas", "Shishas"], ["essencias", "Essências"], ["carvao", "Carvão"], ["acessorios", "Acessórios"], ["packs", "Packs"], ["loja", "Loja física"]];
+  const LINK_PAGES = [["", "Início"], ["shishas", "Shishas"], ["essencias", "Essências"], ["carvao", "Carvão"], ["acessorios", "Acessórios"], ["packs", "Packs"], ["opinioes", "Opiniões"], ["loja", "Loja física"]];
   const shadeHex = (hex, amt) => { const n = parseInt((hex || "#111111").slice(1), 16) || 0; const c = (v) => Math.max(0, Math.min(255, v + amt)); return "#" + ((c(n >> 16) << 16) | (c((n >> 8) & 255) << 8) | c(n & 255)).toString(16).padStart(6, "0"); };
   const gradA = (c) => `linear-gradient(120deg, ${shadeHex(c, -50)} 0%, ${c} 55%, ${shadeHex(c, 60)} 100%)`;
   function ensureHome() {
     const d = clone(HOME_DEFAULT), h = db.store.home || {};
-    const secoes = Array.isArray(h.secoes) ? h.secoes : [];
-    d.secoes.forEach(s => { if (!secoes.some(x => x.id === s.id)) secoes.push(s); });
+    const secoes = mergeSecoes(h.secoes);
     db.store.home = {
       slides: h.slides || d.slides, promos: h.promos || d.promos, categorias: h.categorias || d.categorias,
       novidades: h.novidades || d.novidades, faixa: { ...d.faixa, ...(h.faixa || {}) }, ambiente: { ...d.ambiente, ...(h.ambiente || {}) }, secoes,
@@ -925,6 +972,68 @@
     orders.sort((a, b) => new Date(b.data) - new Date(a.data));
   }
 
+  /* ---------- OPINIÕES ---------- */
+  const starTxt = (n) => "★".repeat(n) + "☆".repeat(5 - n);
+  views.opinioes = () => {
+    setHeader("Opiniões de clientes", "Lê as opiniões e publica as que quiseres. Só aparecem na loja depois de as aprovares.", `<button class="btn btn--dark" data-rv-new>${I.plus} Juntar opinião</button>`);
+    const tab = state.rev || "pendentes";
+    const lists = { pendentes: reviews.filter(r => !r.aprovado), publicadas: reviews.filter(r => r.aprovado), todas: reviews };
+    const list = lists[tab];
+    const avg = lists.publicadas.length ? lists.publicadas.reduce((s, r) => s + r.estrelas, 0) / lists.publicadas.length : 0;
+    $("#view").innerHTML = `
+      ${reviewsMissing ? `<div class="note" style="margin-bottom:16px">${I.alert}<div><b>Falta ativar as opiniões na base de dados.</b><br>No Supabase → SQL Editor, cola e executa o ficheiro <code>supabase/003-opinioes.sql</code> (só uma vez).</div></div>` : ""}
+      <div class="toolbar"><div class="tabs">
+        <button data-rv-tab="pendentes" class="${tab === "pendentes" ? "is-on" : ""}">Por aprovar <i>${lists.pendentes.length}</i></button>
+        <button data-rv-tab="publicadas" class="${tab === "publicadas" ? "is-on" : ""}">Publicadas <i>${lists.publicadas.length}</i></button>
+        <button data-rv-tab="todas" class="${tab === "todas" ? "is-on" : ""}">Todas <i>${reviews.length}</i></button>
+      </div>${lists.publicadas.length ? `<span class="muted">Média na loja: <b style="color:#8c6d3f">★ ${avg.toFixed(1).replace(".", ",")}</b> de 5</span>` : ""}</div>
+      ${list.length ? `<div class="rvs">${list.map(rv => { const prod = rv.produto && findProduct(rv.produto); return `
+        <div class="card rv ${rv.aprovado ? "" : "rv--new"}">
+          <div class="rv__head">
+            <span class="rv__stars" title="${rv.estrelas} de 5">${starTxt(rv.estrelas)}</span>
+            <strong>${esc(rv.nome)}</strong>
+            <span class="muted">${fmtDate(rv.created_at)}</span>
+            <span class="pill">${prod ? esc(nameOf(prod.p)) : "Loja em geral"}</span>
+            <span class="pill ${rv.aprovado ? "st-entregue" : "st-nova"}">${rv.aprovado ? "Publicada" : "Por aprovar"}</span>
+          </div>
+          <p class="rv__txt">${esc(rv.texto)}</p>
+          <div class="field"><label for="rvr${rv.id}">Resposta da loja <span class="muted">(opcional, aparece por baixo)</span></label><textarea id="rvr${rv.id}" data-rv-reply="${rv.id}" maxlength="400" rows="2" placeholder="Ex.: Obrigado pela visita, ${esc(String(rv.nome).split(" ")[0])}!">${esc(rv.resposta || "")}</textarea></div>
+          <div class="rv__act">
+            ${rv.aprovado ? `<button class="btn btn--ghost btn--sm" data-rv-hide="${rv.id}">Esconder da loja</button>` : `<button class="btn btn--dark btn--sm" data-rv-ok="${rv.id}">${I.check} Publicar na loja</button>`}
+            <button class="btn btn--danger btn--sm" data-rv-del="${rv.id}">${I.trash} Apagar</button>
+          </div>
+        </div>`; }).join("")}</div>`
+      : `<div class="card"><div class="empty">${tab === "pendentes" ? "Não há opiniões à espera. 👌<br>Quando um cliente deixar uma opinião na loja, aparece aqui." : "Ainda não há opiniões aqui."}</div></div>`}
+      <div class="note" style="margin-top:16px">${I.info}<div>Publica só opiniões verdadeiras. Podes juntar opiniões que os clientes te deram na loja, no Google ou no Instagram, mas inventar opiniões é proibido por lei.</div></div>`;
+  };
+  function openReviewEditor() {
+    $("#panelTitle").textContent = "Juntar opinião";
+    const prods = allProducts().filter(x => !x.p.oculto);
+    $("#panelBody").innerHTML = `
+      <form class="form" id="rvForm">
+        <div class="note">${I.info}<div>Para opiniões que um cliente te deu pessoalmente, no Google ou no Instagram. Ficam publicadas logo.</div></div>
+        <div class="field"><label for="rv_nome">Nome do cliente</label><input id="rv_nome" name="nome" maxlength="40" placeholder="Ex.: Joana M."></div>
+        <div class="field"><label for="rv_est">Estrelas</label><select id="rv_est" name="estrelas">${[5, 4, 3, 2, 1].map(n => `<option value="${n}">${starTxt(n)} (${n})</option>`).join("")}</select></div>
+        <div class="field"><label for="rv_prod">Sobre</label><select id="rv_prod" name="produto"><option value="">A loja em geral</option>${prods.map(({ p }) => `<option value="${esc(p.id)}">${esc(nameOf(p))}</option>`).join("")}</select></div>
+        <div class="field"><label for="rv_txt">Opinião</label><textarea id="rv_txt" name="texto" maxlength="600" rows="5" placeholder="O que o cliente disse"></textarea></div>
+      </form>`;
+    $("#panelFoot").innerHTML = `<button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--dark" id="saveRev">${I.check} Publicar</button>`;
+    $("#panel").classList.add("is-open"); $("#panel").setAttribute("aria-hidden", "false"); $("#overlay").classList.add("is-on");
+    editing = null;
+  }
+  async function saveReviewNew() {
+    const f = $("#rvForm").elements;
+    const row = { nome: f.nome.value.trim().replace(/[<>]/g, ""), estrelas: +f.estrelas.value, produto: f.produto.value || null, texto: f.texto.value.trim().replace(/[<>]/g, ""), aprovado: true };
+    if (row.nome.length < 2) return toast("Escreve o nome do cliente", true);
+    if (row.texto.length < 3) return toast("Escreve a opinião", true);
+    if (LIVE) {
+      const r = await sb.from("reviews").insert(row).select().single();
+      if (r.error) return toast(reviewsMissing ? "Primeiro ativa as opiniões no Supabase (ficheiro 003)" : "Não foi possível guardar", true);
+      reviews.unshift(r.data);
+    } else { reviews.unshift({ ...row, id: Date.now(), created_at: new Date().toISOString(), resposta: "" }); saveReviewsLocal(); }
+    closePanel(); state.rev = "publicadas"; toast("Opinião publicada na loja"); render();
+  }
+
   /* ---------- DADOS DA LOJA ---------- */
   views.loja = () => {
     const s = db.store;
@@ -1085,6 +1194,29 @@ const PACKS = ${J(db.packs)};
       return;
     }
     if (t.id === "savePack") return savePack();
+    // --- Cores da shisha ---
+    if (t.dataset.coradd && editing) {
+      const [nome, hex] = t.dataset.coradd.split("|"), cs = editing.p.cores = editing.p.cores || [];
+      if (nome && cs.some(c => c.nome.toLowerCase() === nome.toLowerCase())) return toast(`A cor ${nome} já está na lista`, true);
+      cs.push({ nome, hex }); redrawCores();
+      if (!nome) $$("#coresBox [data-k='nome']").pop()?.focus();
+      return;
+    }
+    if (t.dataset.cordel != null && editing) { editing.p.cores.splice(+t.dataset.cordel, 1); return redrawCores(); }
+    // --- Opiniões ---
+    if (t.dataset.rvTab) { state.rev = t.dataset.rvTab; return views.opinioes(); }
+    if (t.matches("[data-rv-new]")) return openReviewEditor();
+    if (t.id === "saveRev") return saveReviewNew();
+    if (t.dataset.rvOk || t.dataset.rvHide) {
+      const rv = reviews.find(x => String(x.id) === (t.dataset.rvOk || t.dataset.rvHide)); if (!rv) return;
+      const on = !!t.dataset.rvOk;
+      updateReview(rv, { aprovado: on }).then(ok => { if (ok) { toast(on ? "Publicada na loja" : "Escondida da loja"); render(); } });
+      return;
+    }
+    if (t.dataset.rvDel) {
+      if (confirm("Apagar esta opinião? Não dá para recuperar.")) deleteReview(isNaN(+t.dataset.rvDel) ? t.dataset.rvDel : +t.dataset.rvDel).then(ok => { if (ok) { toast("Opinião apagada"); render(); } });
+      return;
+    }
     if (t.dataset.pkAdd) {
       const f = findProduct(t.dataset.pkAdd);
       editing.p.itens.push({ id: t.dataset.pkAdd, qty: 1, ...(f.p.precos ? { size: Object.keys(f.p.precos)[0] } : {}) });
@@ -1115,7 +1247,7 @@ const PACKS = ${J(db.packs)};
     if (t.matches("[data-demo-orders]")) return demoOrders();
     if (t.matches("[data-clear-demo]")) { if (confirm("Apagar todas as encomendas de exemplo?")) clearDemoOrders(); return; }
     if (t.dataset.export === "js") return exportJs();
-    if (t.dataset.export === "json") { download(`shisha-store-copia-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ ...db, orders }, null, 2), "application/json"); return toast("Cópia descarregada"); }
+    if (t.dataset.export === "json") { download(`shisha-store-copia-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ ...db, orders, reviews }, null, 2), "application/json"); return toast("Cópia descarregada"); }
     if (t.matches("[data-reset]")) {
       if (confirm("Repor a demonstração? As alterações e encomendas feitas neste navegador serão apagadas.")) { localStorage.removeItem("ss_catalog"); localStorage.removeItem("ss_orders"); location.reload(); }
       return;
@@ -1135,6 +1267,21 @@ const PACKS = ${J(db.packs)};
       drawRows();
     }
     if (t.id === "fstock") drawRows();
+    if (t.dataset.cor != null && editing?.p.cores) {
+      const c = editing.p.cores[+t.dataset.cor]; if (!c) return;
+      if (t.dataset.k === "stock") { if (t.checked) delete c.esgotada; else c.esgotada = true; return redrawCores(); }
+    }
+    if (t.dataset.corfile != null && editing?.p.cores) {
+      const file = t.files[0], i = +t.dataset.corfile; if (!file) return;
+      compress(file).then(data => { if (editing?.p.cores?.[i]) { editing.p.cores[i].img = data; redrawCores(); toast("Foto da cor pronta — carrega em Guardar"); } });
+      return;
+    }
+    if (t.dataset.rvReply) {
+      const rv = reviews.find(x => String(x.id) === t.dataset.rvReply); if (!rv) return;
+      const v = t.value.trim().replace(/[<>]/g, "").slice(0, 400);
+      if (v !== (rv.resposta || "")) updateReview(rv, { resposta: v || null }).then(ok => ok && toast(v ? "Resposta guardada" : "Resposta apagada"));
+      return;
+    }
     if (t.dataset.pkSize != null) { editing.p.itens[+t.dataset.pkSize].size = t.value; drawPackChosen(); drawPackSum(); }
     // --- Página inicial ---
     if (t.dataset.h) {
@@ -1154,10 +1301,16 @@ const PACKS = ${J(db.packs)};
       return homeSave(t.checked ? "Juntado às Novidades" : "Tirado das Novidades");
     }
   });
-  document.addEventListener("input", (e) => { if (e.target.id === "q") { state.q = e.target.value; drawRows(); } });
+  document.addEventListener("input", (e) => {
+    const t = e.target;
+    if (t.id === "q") { state.q = t.value; drawRows(); }
+    // cores: o nome e a cor ficam guardados enquanto se escreve (sem redesenhar)
+    if (t.dataset.cor != null && editing?.p.cores && (t.dataset.k === "nome" || t.dataset.k === "hex")) { const c = editing.p.cores[+t.dataset.cor]; if (c) c[t.dataset.k] = t.value; }
+  });
   $("#overlay").addEventListener("click", closePanel);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePanel(); });
   // a loja (noutro separador) pode registar encomendas novas
+  if (!LIVE) window.addEventListener("storage", (e) => { if (e.key === "ss_reviews") { reviews = ls.get("ss_reviews", []); if (pinOk() && !$("#panel").classList.contains("is-open")) render(); } });
   if (!LIVE) window.addEventListener("storage", (e) => { if (e.key === "ss_orders") { orders = ls.get("ss_orders", []); if (pinOk() && !$("#panel").classList.contains("is-open")) render(); } });
 
   let tt;
@@ -1173,12 +1326,15 @@ const PACKS = ${J(db.packs)};
   // novas encomendas: atualiza a cada 30 segundos (modo real)
   if (LIVE) setInterval(async () => {
     if (!session || document.hidden || $("#panel").classList.contains("is-open")) return;
-    const before = orders.filter(o => o.estado === "nova").length;
-    await refreshOrders();
-    const now = orders.filter(o => o.estado === "nova").length;
+    const before = orders.filter(o => o.estado === "nova").length, rBefore = pendingReviews();
+    await Promise.all([refreshOrders(), refreshReviews()]);
+    const now = orders.filter(o => o.estado === "nova").length, rNow = pendingReviews();
     if (now > before) toast(`🛍️ Nova encomenda! (${now} por confirmar)`);
-    if (["painel", "encomendas"].includes(route())) render();
-    else { $("#newOrders").textContent = now; $("#newOrders").hidden = !now; $("#newOrders2").textContent = now; $("#newOrders2").hidden = !now; }
+    else if (rNow > rBefore) toast(`⭐ Nova opinião para aprovar`);
+    // não redesenha enquanto se escreve uma resposta
+    if (document.activeElement?.matches("textarea, input")) return;
+    if (["painel", "encomendas", "opinioes"].includes(route())) render();
+    else { $("#newOrders").textContent = now; $("#newOrders").hidden = !now; $("#newOrders2").textContent = now; $("#newOrders2").hidden = !now; $("#newReviews").textContent = rNow; $("#newReviews").hidden = !rNow; }
   }, 30000);
   // arranque
   if (LIVE) sb.auth.getSession().then(({ data }) => { session = data.session; session ? showApp() : showLogin(); });

@@ -8,6 +8,7 @@
 window.SSDB = (() => {
   const C = window.SS_CONFIG || {};
   const live = !!(C.SUPABASE_URL && C.SUPABASE_ANON_KEY);
+  const REVIEWS = [];   // opiniões aprovadas (as mais recentes primeiro)
   const LISTS = { shishas: SHISHAS, essencias: ESSENCIAS, carvao: CARVAO, acessorios: ACESSORIOS, packs: PACKS };
 
   const rest = (path, opt = {}) => fetch(`${C.SUPABASE_URL}/rest/v1/${path}`, {
@@ -21,7 +22,7 @@ window.SSDB = (() => {
   function clean(v, key) {
     if (typeof v === "string") {
       if (key === "img") return SAFE_IMG.test(v) ? v.replace(/["'<>\s]/g, "") : undefined;
-      if (key === "cor") return /^#[0-9a-f]{3,8}$/i.test(v) ? v : "#999999";
+      if (key === "cor" || key === "hex") return /^#[0-9a-f]{3,8}$/i.test(v) ? v : "#999999";
       return v.replace(/[<>]/g, "");
     }
     if (Array.isArray(v)) return v.map(x => clean(x));
@@ -36,6 +37,16 @@ window.SSDB = (() => {
     for (const [k, arr] of Object.entries(LISTS)) arr.splice(0, arr.length, ...by[k]);
   }
 
+  // opiniões vindas da base de dados → só os campos esperados, sem HTML
+  function applyReviews(rows) {
+    const ok = (Array.isArray(rows) ? rows : []).filter(r => r && r.aprovado !== false).map(r => ({
+      id: r.id, data: r.created_at, produto: r.produto ? String(r.produto).replace(/[^a-z0-9-]/gi, "") : null,
+      nome: String(r.nome || "").replace(/[<>]/g, "").slice(0, 40), estrelas: Math.min(5, Math.max(1, Math.round(+r.estrelas || 5))),
+      texto: String(r.texto || "").replace(/[<>]/g, "").slice(0, 600), resposta: r.resposta ? String(r.resposta).replace(/[<>]/g, "").slice(0, 400) : "",
+    }));
+    REVIEWS.splice(0, REVIEWS.length, ...ok.sort((a, b) => new Date(b.data) - new Date(a.data)));
+  }
+
   function applyLocal() {
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem("ss_catalog")); } catch {}
@@ -43,21 +54,24 @@ window.SSDB = (() => {
     for (const [k, arr] of Object.entries(LISTS)) if (Array.isArray(saved[k])) arr.splice(0, arr.length, ...saved[k]);
     if (saved.store) Object.assign(STORE, saved.store);
   }
+  function localReviews() { try { applyReviews(JSON.parse(localStorage.getItem("ss_reviews")) || []); } catch {} }
 
   async function load() {
-    if (!live) return applyLocal();
+    if (!live) { applyLocal(); localReviews(); return; }
     // Velocidade: usa a última cópia do catálogo guardada no telemóvel do cliente
     // se a internet estiver lenta (mais de 2,5 s), e atualiza-a em segundo plano.
     let cache = null;
     try { cache = JSON.parse(localStorage.getItem("ss_cache")); } catch {}
-    const useData = (d) => { if (d.rows?.length) applyRows(d.rows); if (d.store) Object.assign(STORE, clean(d.store)); };
+    const useData = (d) => { if (d.rows?.length) applyRows(d.rows); if (d.store) Object.assign(STORE, clean(d.store)); if (d.reviews) applyReviews(d.reviews); };
     const fresh = (async () => {
-      const [cat, set] = await Promise.all([
+      const [cat, set, rev] = await Promise.all([
         rest("catalog?select=id,cat,pos,data&order=pos.asc"),
         rest("settings?select=store&id=eq.1"),
+        // o servidor só devolve as opiniões aprovadas
+        rest("reviews?select=id,created_at,produto,nome,estrelas,texto,resposta&order=created_at.desc&limit=300").catch(() => null),
       ]);
       if (!cat.ok) throw new Error("catalog " + cat.status);
-      const d = { t: Date.now(), rows: await cat.json(), store: set.ok ? (await set.json())[0]?.store : null };
+      const d = { t: Date.now(), rows: await cat.json(), store: set.ok ? (await set.json())[0]?.store : null, reviews: rev?.ok ? await rev.json() : [] };
       try { localStorage.setItem("ss_cache", JSON.stringify(d)); } catch {}
       return d;
     })();
@@ -91,8 +105,26 @@ window.SSDB = (() => {
     } catch (e) { console.warn("Não foi possível registar a encomenda.", e); }
   }
 
+  // Opinião deixada por um cliente (fica à espera de aprovação no painel)
+  async function sendReview(r) {
+    const row = { produto: r.produto || null, nome: String(r.nome).slice(0, 40), estrelas: r.estrelas, texto: String(r.texto).slice(0, 600) };
+    if (!live) {
+      let all = [];
+      try { all = JSON.parse(localStorage.getItem("ss_reviews")) || []; } catch {}
+      all.unshift({ ...row, id: Date.now(), created_at: new Date().toISOString(), aprovado: false, resposta: "" });
+      try { localStorage.setItem("ss_reviews", JSON.stringify(all)); } catch {}
+      return { ok: true };
+    }
+    try {
+      const res = await rest("reviews", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(row) });
+      if (res.ok) return { ok: true };
+      const err = await res.json().catch(() => ({}));
+      return { ok: false, msg: /opini|ocupado/i.test(err.message || "") ? err.message : "Não foi possível enviar. Tenta outra vez." };
+    } catch { return { ok: false, msg: "Sem internet. Tenta outra vez." }; }
+  }
+
   // No painel em modo demonstração, as alterações do navegador carregam já (o modo real lê da base de dados)
   if (window.SS_ADMIN && !live) applyLocal();
   const ready = window.SS_ADMIN ? Promise.resolve() : load().then(hideHidden);
-  return { live, config: C, LISTS, applyRows, clean, placeOrder, ready };
+  return { live, config: C, LISTS, REVIEWS, applyRows, clean, placeOrder, sendReview, ready };
 })();

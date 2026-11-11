@@ -200,6 +200,18 @@ const HOME_DEFAULT = {
   secoes: [
     { id: "categorias", ativo: true }, { id: "garantias", ativo: true }, { id: "novidades", ativo: true },
     { id: "essencias", ativo: true }, { id: "packs", ativo: true }, { id: "ambiente", ativo: true },
-    { id: "marcas", ativo: true }, { id: "loja", ativo: true },
+    { id: "marcas", ativo: true }, { id: "opinioes", ativo: true }, { id: "loja", ativo: true },
   ],
 };
+
+// Junta às secções guardadas as secções novas (na posição certa, antes da que lhe segue)
+function mergeSecoes(saved) {
+  const out = Array.isArray(saved) ? saved.map(s => ({ ...s })) : [];
+  HOME_DEFAULT.secoes.forEach((s, k) => {
+    if (out.some(x => x.id === s.id)) return;
+    const next = HOME_DEFAULT.secoes.slice(k + 1).find(n => out.some(x => x.id === n.id));
+    const at = next ? out.findIndex(x => x.id === next.id) : out.length;
+    out.splice(at, 0, { ...s });
+  });
+  return out;
+}

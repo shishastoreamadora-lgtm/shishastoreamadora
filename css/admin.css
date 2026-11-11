@@ -411,3 +411,30 @@ table.t { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .toast { position: fixed; left: 50%; bottom: 24px; translate: -50% 20px; background: var(--ink); color: #fff; padding: 11px 18px; border-radius: 99px; font-size: 13.5px; font-weight: 500; opacity: 0; pointer-events: none; transition: .25s; z-index: 90; display: flex; gap: 8px; align-items: center; }
 .toast.is-on { opacity: 1; translate: -50% 0; }
 .toast svg { color: #4ade80; width: 18px; height: 18px; }
+
+/* ---------- Cores da shisha (editor) ---------- */
+.cores { display: grid; gap: 8px; margin-bottom: 8px; }
+.cor-row { display: grid; grid-template-columns: 40px 1fr 44px auto 36px; gap: 8px; align-items: center; }
+.cor-row.is-off input[type="text"] { text-decoration: line-through; color: #999; }
+.cor-row input[type="color"] { width: 40px; height: 40px; padding: 2px; border: 1px solid #e5e5e5; border-radius: 10px; background: #fff; cursor: pointer; }
+.cor-row input[type="text"] { min-width: 0; }
+.cor-photo { width: 44px; height: 44px; border-radius: 10px; border: 1.5px dashed #d4d4d4; display: grid; place-items: center; cursor: pointer; overflow: hidden; font-size: 18px; }
+.cor-photo img { width: 100%; height: 100%; object-fit: cover; }
+.cor-row .switch { margin: 0; }
+.cor-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cor-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border: 1px solid #e5e5e5; border-radius: 999px; background: #fff; font-size: 13px; cursor: pointer; }
+.cor-chip:hover { border-color: #111; }
+.cor-chip i { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.15); }
+.cor-chip svg { width: 14px; height: 14px; }
+
+/* ---------- Opiniões ---------- */
+.rvs { display: grid; gap: 12px; }
+.rv { padding: 16px 18px; display: grid; gap: 10px; }
+.rv--new { border-left: 4px solid #b08d57; }
+.rv__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.rv__stars { color: #b08d57; font-size: 17px; letter-spacing: 1px; }
+.rv__txt { margin: 0; font-size: 15px; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
+.rv textarea { min-height: 60px; }
+.rv__act { display: flex; gap: 8px; flex-wrap: wrap; }
+.list__link { display: flex; align-items: center; gap: 12px; width: 100%; color: inherit; text-decoration: none; }
+.toolbar .muted b { font-weight: 700; }
