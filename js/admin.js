@@ -1066,6 +1066,10 @@
           <div class="card"><div class="card__head"><h3>Horário</h3></div><div class="card__body"><div class="form" id="hours">
             ${[0, 1, 2].map(i => `<div class="row"><div class="field"><input data-h="${i}" data-k="0" value="${esc(h[i]?.[0] || "")}" placeholder="Dias"></div><div class="field"><input data-h="${i}" data-k="1" value="${esc(h[i]?.[1] || "")}" placeholder="Horas"></div></div>`).join("")}
           </div></div></div>
+          <div class="card"><div class="card__head"><h3>Essências na loja online</h3></div><div class="card__body"><div class="form">
+            <label class="switch"><input type="checkbox" id="mostrarEss" ${s.ocultarEssencias ? "" : "checked"}><i></i><span><b>Mostrar as essências no site</b><small>${s.ocultarEssencias ? "Escondidas: o site não mostra essências, packs com essências nem frases sobre elas." : "Visíveis no site."}</small></span></label>
+            <small class="muted">A Lei do Tabaco (Lei 37/2007, art. 15.º e 16.º) proíbe vender e anunciar tabaco e produtos à base de plantas para fumar pela internet. Desligar esconde-as do site sem as apagar: continuam aqui no painel e voltam com um toque.</small>
+          </div></div></div>
           <div class="card"><div class="card__head"><h3>Segurança</h3></div><div class="card__body"><div class="form">
             ${LIVE ? `<div class="field"><label>Nova palavra-passe</label><input id="newPass" type="password" autocomplete="new-password" placeholder="Mínimo 10 caracteres"><small>Sessão iniciada como ${esc(session?.user?.email || "")}.</small></div>
             <button class="btn btn--ghost btn--sm" id="changePass" type="button">Mudar palavra-passe</button>`
@@ -1082,6 +1086,10 @@
       const pin = $("#newPin")?.value.trim();
       if (pin) { if (!/^\d{4,8}$/.test(pin)) return toast("O PIN deve ter 4 a 8 números", true); db.store.pin = pin; }
       save("Dados da loja guardados");
+    });
+    $("#mostrarEss").addEventListener("change", (e) => {
+      if (e.target.checked) delete db.store.ocultarEssencias; else db.store.ocultarEssencias = true;
+      save(e.target.checked ? "Essências visíveis no site" : "Essências escondidas do site"); views.loja();
     });
     $("#changePass")?.addEventListener("click", async () => {
       const pw = $("#newPass").value;

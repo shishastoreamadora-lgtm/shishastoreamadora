@@ -10,6 +10,20 @@ SSDB.ready.then(() => {
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
 
+  /* ---------- Essências ocultas (painel → Dados da loja) ----------
+     Esconde da loja online as essências, os packs que as incluem e os textos/links da página inicial que falam delas.
+     Os produtos continuam guardados no painel. */
+  const semEss = !!STORE.ocultarEssencias;
+  const ESS_TXT = /ess[eê]ncia|tabaco|sabor(es)?\b/i;
+  if (semEss) {
+    const essIds = new Set(ESSENCIAS.map(e => e.id));
+    for (let i = PACKS.length - 1; i >= 0; i--) {
+      const pk = PACKS[i];
+      if ((pk.itens || []).some(it => essIds.has(it.id)) || (pk.inclui || []).some(t => ESS_TXT.test(t))) PACKS.splice(i, 1);
+    }
+    ESSENCIAS.splice(0, ESSENCIAS.length);
+  }
+
   /* ---------- Catálogo unificado ---------- */
   const tamanho = (cm) => cm <= 30 ? "mini" : cm <= 45 ? "medio" : "grande";
   const ALL = [
@@ -60,6 +74,8 @@ SSDB.ready.then(() => {
   /* ---------- Cores (variantes) e opiniões ---------- */
   const coresOf = (p) => p.tipo === "shisha" && Array.isArray(p.cores) ? p.cores.filter(c => c && c.nome) : [];
   const REV = SSDB.REVIEWS;
+  // Informação obrigatória (DL 57/2008, alterado pelo DL 109-G/2021): como são verificadas as opiniões
+  const REV_NOTA = "Todas as opiniões são lidas pela loja antes de serem publicadas. Não conseguimos confirmar que cada autor comprou o produto; algumas foram-nos dadas pessoalmente na loja e publicadas por nós com autorização do cliente. Não publicamos opiniões pagas nem apagamos opiniões por serem negativas.";
   const revOf = (id) => REV.filter(r => r.produto === id);
   const avgOf = (list) => list.length ? list.reduce((s, r) => s + r.estrelas, 0) / list.length : 0;
   const num1 = (n) => n.toLocaleString("pt-PT", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -83,7 +99,7 @@ SSDB.ready.then(() => {
       <input name="site" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
       <p class="checkout__err" hidden></p>
       <button class="btn btn--dark" type="submit">Enviar opinião</button>
-      <p class="muted small">As opiniões são lidas pela loja antes de serem publicadas.</p>
+      <p class="muted small">${REV_NOTA}</p>
     </form>`;
   }
 
@@ -141,11 +157,22 @@ SSDB.ready.then(() => {
   const safeCor = (c, d = "#111111") => /^#[0-9a-f]{3,8}$/i.test(c || "") ? c : d;
   const grad = (c, deg = 120) => `linear-gradient(${deg}deg, ${Art.shade(c, -50)} 0%, ${c} 55%, ${Art.shade(c, 60)} 100%)`;
   function homeCfg() {
-    const h = STORE.home || {}, d = HOME_DEFAULT, arr = (k) => Array.isArray(h[k]) ? h[k] : d[k];
+    const h = STORE.home || {}, d = HOME_DEFAULT;
+    // sem essências: tira banners, categorias e frases que levam às essências
+    const essItem = (x) => semEss && x && (x.link === "essencias" || x.cat === "essencias" || ESS_TXT.test(`${x.kicker || ""} ${x.titulo || ""} ${x.sub || ""}`));
+    const arr = (k) => (Array.isArray(h[k]) ? h[k] : d[k]).filter(x => !essItem(x));
     const secoes = mergeSecoes(h.secoes);
     return {
-      slides: arr("slides"), promos: arr("promos"), categorias: arr("categorias"), novidades: arr("novidades"),
-      faixa: { ...d.faixa, ...(h.faixa || {}) }, ambiente: { ...d.ambiente, ...(h.ambiente || {}) }, secoes,
+      slides: arr("slides").filter(x => !semEss || x.link !== "packs" || PACKS.length),
+      promos: arr("promos").filter(x => !semEss || x.link !== "packs" || PACKS.length),
+      categorias: arr("categorias").filter(c => !semEss || c.cat !== "packs" || PACKS.length), novidades: arr("novidades"),
+      faixa: (() => { const f = { ...d.faixa, ...(h.faixa || {}) }; if (semEss) f.itens = (f.itens || []).filter(t => !ESS_TXT.test(t) && !/adalya/i.test(t)); return f; })(),
+      ambiente: (() => { const a = { ...d.ambiente, ...(h.ambiente || {}) }; if (semEss) a.tiles = (a.tiles || []).filter(t => !essItem(t)); 
+        if (semEss) {
+          if (ESS_TXT.test(a.texto || "")) a.texto = "Shishas, carvão e acessórios — tudo num só lugar, com aconselhamento de quem percebe.";
+          if (essItem(a) || (a.link === "packs" && !PACKS.length)) { a.link = "shishas"; a.cta = "Ver shishas"; }
+        }
+        return a; })(), secoes,
     };
   }
 
@@ -246,7 +273,7 @@ SSDB.ready.then(() => {
             <div><h2 class="h2">O que dizem os clientes</h2>${list.length ? `<p class="rsum">${starsHTML(avg)} <b>${num1(avg)}</b> de 5 · ${REV.length} opini${REV.length === 1 ? "ão" : "ões"}</p>` : ""}</div>
             <a class="link" href="#/opinioes">${list.length ? "Ver todas →" : "Deixar opinião →"}</a>
           </div>
-          ${list.length ? `<div class="reviews__cards">${list.map(r => reviewHTML(r, true)).join("")}</div>`
+          ${list.length ? `<div class="reviews__cards">${list.map(r => reviewHTML(r, true)).join("")}</div><p class="muted small rnota"><a class="link" href="#/opinioes">Como verificamos as opiniões?</a></p>`
             : `<a class="rempty" href="#/opinioes"><span class="rempty__stars">★★★★★</span><strong>Já nos visitaste?</strong><span class="muted">Conta-nos como foi — a tua opinião ajuda outros clientes.</span></a>`}
         </section>`; },
       loja: () => lojaHTML(),
@@ -396,7 +423,13 @@ SSDB.ready.then(() => {
   }
 
   /* ---------- ESSÊNCIAS (área própria, estilo Hookah.com) ---------- */
-  views.essencias = () => `
+  const essOff = () => `
+    <section class="container section legal">
+      <h1 class="h2">Visita-nos na loja</h1>
+      <p>Esta secção não está disponível online. Passa pela nossa loja em ${tx(STORE.morada)} — teremos todo o gosto em ajudar.</p>
+      <a class="btn btn--dark" href="#/loja">Ver morada e horário</a>
+    </section>`;
+  views.essencias = () => semEss ? essOff() : `
     <section class="page-hero page-hero--ess" style="--hero-bg:url('${stock("tabaco", 1600)}')"><div class="container">
       <nav class="crumbs"><a href="#/">Início</a> / <span>Essências</span></nav>
       <span class="eyebrow eyebrow--light">Representante oficial Adalya em Portugal</span>
@@ -450,6 +483,7 @@ SSDB.ready.then(() => {
       <nav class="crumbs"><a href="#/">Início</a> / <span>Opiniões</span></nav>
       <h1 class="h2">Opiniões de clientes</h1>
       ${REV.length ? `<p class="rsum rsum--big">${starsHTML(avg)} <b>${num1(avg)}</b> de 5 · ${REV.length} opini${REV.length === 1 ? "ão" : "ões"}</p>` : `<p class="muted">Ainda não há opiniões publicadas. Sê o primeiro!</p>`}
+      <p class="muted small rnota">ℹ️ ${REV_NOTA}</p>
       <div class="reviews__grid">
         <div class="reviews__list">${REV.map(r => reviewHTML(r, true)).join("")}</div>
         ${reviewForm()}
@@ -463,31 +497,71 @@ SSDB.ready.then(() => {
     <section class="container section legal">${body}<p class="muted small">Última atualização: ${new Date().toLocaleDateString("pt-PT", { month: "long", year: "numeric" })}</p></section>`;
   const owner = () => `${fill(STORE.empresa, "nome da empresa")}, NIF ${fill(STORE.nif, "NIF")}, com sede em ${STORE.morada}`;
   views.privacidade = () => legalPage("Política de privacidade", `
-    <h2>Quem é o responsável pelos seus dados</h2>
-    <p>${owner()} ("${STORE.nome}"). Contacto: ${fill(STORE.email, "email")} · ${STORE.telefone}.</p>
-    <h2>Que dados recolhemos</h2>
-    <p>Este site não tem registo de clientes nem pede dados pessoais. Quando faz uma encomenda, guardamos apenas os produtos, as quantidades e o valor, para preparar o pedido. Os seus dados de contacto (nome e número) chegam-nos pelo WhatsApp, quando decide enviar a mensagem.</p>
-    <h2>Para que usamos os dados</h2>
-    <p>Apenas para preparar e entregar a sua encomenda e responder às suas mensagens. Não vendemos nem partilhamos os seus dados com terceiros para fins de marketing.</p>
-    <h2>Dados guardados no seu navegador</h2>
-    <p>O carrinho, os favoritos e a confirmação de idade ficam guardados no seu próprio navegador (armazenamento local) e não nos são enviados. Pode apagá-los a qualquer momento nas definições do navegador. Não usamos cookies de publicidade.</p>
-    <h2>Serviços de terceiros</h2>
-    <p>O site usa o WhatsApp (Meta) para as encomendas, o Google Maps para o mapa da loja e um serviço de alojamento de base de dados na União Europeia. Estes serviços têm as suas próprias políticas de privacidade.</p>
-    <h2>Os seus direitos</h2>
-    <p>Pode pedir o acesso, a correção ou a eliminação dos seus dados através de ${fill(STORE.email, "email")}. Pode também apresentar reclamação à Comissão Nacional de Proteção de Dados (www.cnpd.pt).</p>`);
+    <p class="muted small">Última atualização: novembro de 2026.</p>
+    <h2>1. Quem é o responsável pelos seus dados</h2>
+    <p>${owner()} ("${tx(STORE.nome)}"). Contacto: ${fill(STORE.email, "email")} · ${tx(STORE.telefone)}.</p>
+    <h2>2. Que dados recolhemos e porquê</h2>
+    <ul>
+      <li><b>Encomendas:</b> nome, número de telemóvel, produtos, quantidades, valor e data. Servem para preparar a encomenda e contactá-lo sobre ela (fundamento: diligências pré-contratuais e execução do contrato — art. 6.º, n.º 1, al. b) do RGPD).</li>
+      <li><b>Mensagens de WhatsApp:</b> quando decide enviar a encomenda pelo WhatsApp, recebemos a mensagem e o seu número.</li>
+      <li><b>Opiniões:</b> nome (ou o nome que escolher), estrelas e texto. São publicadas na loja só depois de aprovadas (fundamento: o seu consentimento, que pode retirar a qualquer momento pedindo para apagar a opinião).</li>
+      <li><b>Proteção contra abusos:</b> para impedir envios automáticos em massa, guardamos uma versão codificada e irreversível do endereço IP de quem faz encomendas ou deixa opiniões (fundamento: interesse legítimo na segurança do site).</li>
+    </ul>
+    <p>Não pedimos registo, não fazemos perfis de clientes, não enviamos publicidade e não vendemos nem cedemos os seus dados a terceiros.</p>
+    <h2>3. Durante quanto tempo guardamos</h2>
+    <ul>
+      <li>Encomendas: até 2 anos após o pedido, salvo se a lei (por exemplo, fiscal) exigir mais tempo.</li>
+      <li>Opiniões: enquanto estiverem publicadas, ou até pedir que sejam apagadas.</li>
+      <li>IP codificado: até 2 anos, junto com a encomenda ou opinião a que diz respeito.</li>
+    </ul>
+    <h2>4. Dados guardados no seu dispositivo</h2>
+    <p>O site guarda no seu próprio navegador (armazenamento local) o carrinho, os favoritos, a confirmação de idade, o nome e telemóvel que escreveu na última encomenda (para não ter de os escrever de novo) e uma cópia do catálogo para o site abrir mais depressa. Estes dados servem só para o site funcionar como pediu, não são cookies de publicidade nem de estatística e pode apagá-los a qualquer momento nas definições do navegador. Por isso não é necessário pedir consentimento para cookies.</p>
+    <h2>5. Quem nos ajuda a tratar os dados</h2>
+    <ul>
+      <li><b>Supabase</b> — alojamento da base de dados (encomendas e opiniões).</li>
+      <li><b>GitHub</b> — alojamento das páginas do site.</li>
+      <li><b>WhatsApp (Meta)</b> — só quando escolhe enviar a encomenda por WhatsApp.</li>
+      <li><b>Google Maps</b> — só é carregado se tocar em "Ver o mapa da loja".</li>
+      <li><b>Unsplash</b> — algumas fotografias do site são carregadas a partir deste serviço.</li>
+    </ul>
+    <p>Alguns destes fornecedores podem tratar dados fora da União Europeia; nesses casos, fazem-no ao abrigo das garantias previstas no RGPD (decisões de adequação ou cláusulas contratuais-tipo da Comissão Europeia).</p>
+    <h2>6. Os seus direitos</h2>
+    <p>Pode pedir o acesso, a correção, a eliminação ou a limitação dos seus dados, opor-se ao seu tratamento ou pedir a portabilidade, através de ${fill(STORE.email, "email")} ou na loja. Respondemos no prazo máximo de um mês. Pode também apresentar reclamação à Comissão Nacional de Proteção de Dados (www.cnpd.pt).</p>`);
   views.termos = () => legalPage("Termos e condições", `
-    <h2>Identificação</h2>
-    <p>${owner()}. Contacto: ${fill(STORE.email, "email")} · ${STORE.telefone}.</p>
-    <h2>Venda a maiores de 18 anos</h2>
-    <p>A venda de produtos de tabaco e artigos relacionados é exclusiva a maiores de 18 anos. Poderá ser pedido documento de identificação no levantamento.</p>
-    <h2>Encomendas</h2>
-    <p>As encomendas feitas no site são enviadas por WhatsApp e só ficam confirmadas quando respondermos. Os produtos de tabaco são reservados online e pagos e levantados na loja física.</p>
-    <h2>Preços</h2>
-    <p>Os preços incluem IVA à taxa legal em vigor. Em caso de erro evidente de preço, contactaremos o cliente antes de confirmar a encomenda.</p>
-    <h2>Trocas e devoluções</h2>
-    <p>Os artigos não usados e na embalagem original podem ser trocados ou devolvidos no prazo legal. Produtos de tabaco abertos não podem ser devolvidos por razões de higiene e segurança.</p>
-    <h2>Resolução de litígios</h2>
-    <p>Em caso de litígio, o consumidor pode recorrer ao Livro de Reclamações (www.livroreclamacoes.pt) ou a uma entidade de resolução alternativa de litígios de consumo, como o CNIACC — Centro Nacional de Informação e Arbitragem de Conflitos de Consumo (www.cniacc.pt).</p>`);
+    <p class="muted small">Última atualização: novembro de 2026.</p>
+    <h2>1. Identificação</h2>
+    <p>${owner()}. Contacto: ${fill(STORE.email, "email")} · ${tx(STORE.telefone)}.</p>
+    <h2>2. Maiores de 18 anos</h2>
+    <p>O acesso ao site e a venda de produtos de tabaco e artigos relacionados são exclusivos a maiores de 18 anos. No levantamento será pedido documento de identificação com fotografia sempre que a lei o exija.</p>
+    <h2>3. Como funcionam as encomendas</h2>
+    <p>As encomendas feitas no site são <b>reservas</b>: são-nos enviadas por WhatsApp e só ficam confirmadas quando respondermos. O pagamento e a entrega fazem-se na loja física (${tx(STORE.morada)}), onde pode ver os produtos antes de pagar; a venda considera-se celebrada na loja, nesse momento. A reserva não obriga a comprar e pode ser cancelada a qualquer momento, sem custos, por WhatsApp ou telefone. Guardamos a reserva durante 7 dias, salvo outro prazo combinado.</p>
+    <p>Os produtos de tabaco e à base de plantas para fumar são vendidos apenas presencialmente, na loja, nos termos da Lei n.º 37/2007.</p>
+    <h2>4. Preços e disponibilidade</h2>
+    <p>Os preços estão em euros e incluem IVA à taxa legal em vigor. Os produtos estão sujeitos à disponibilidade em stock. Em caso de erro evidente de preço ou de rutura de stock, avisamos antes de confirmar a reserva.</p>
+    <h2>5. Direito de livre resolução (14 dias)</h2>
+    <p>Quando a venda for celebrada à distância — por exemplo, se pagar antes de vir à loja ou se lhe enviarmos o produto — tem o direito de desistir da compra no prazo de <b>14 dias</b> a contar do dia em que recebe o produto, sem indicar o motivo (Decreto-Lei n.º 24/2014). Para isso, basta comunicar-nos a sua decisão por email, WhatsApp ou carta, podendo usar o modelo abaixo. Devolvemos todos os pagamentos recebidos, incluindo os custos de envio normais, no prazo de 14 dias a contar da sua comunicação, pelo mesmo meio de pagamento. Podemos reter o reembolso até recebermos o produto de volta. O produto deve ser devolvido em bom estado no prazo de 14 dias; os custos da devolução ficam a cargo do cliente.</p>
+    <p><b>Exceções</b> (art. 17.º do DL 24/2014): não é possível desistir de produtos selados que tenham sido abertos após a entrega e que não possam ser devolvidos por motivos de proteção da saúde ou de higiene — como boquilhas, mangueiras e produtos para consumo.</p>
+    <div class="legal__form">
+      <p><b>Modelo de formulário de livre resolução</b><br><span class="muted">(só deve preencher e enviar este formulário se quiser desistir do contrato)</span></p>
+      <p>— Para: ${fill(STORE.empresa, "nome da empresa")}, ${tx(STORE.morada)}, ${fill(STORE.email, "email")}:<br>
+      — Pela presente comunico que resolvo o meu contrato de compra e venda do seguinte bem: …<br>
+      — Encomendado em … / recebido em …<br>
+      — Nome do consumidor: …<br>
+      — Endereço do consumidor: …<br>
+      — Assinatura do consumidor (só no caso de o formulário ser enviado em papel): …<br>
+      — Data: …</p>
+    </div>
+    <h2>6. Garantia</h2>
+    <p>Os produtos novos têm a garantia legal de conformidade de <b>3 anos</b> (Decreto-Lei n.º 84/2021). Em caso de defeito, contacte-nos ou dirija-se à loja com o comprovativo de compra. A garantia não cobre o desgaste normal nem danos causados por mau uso (por exemplo, quedas ou limpeza inadequada).</p>
+    <h2>7. Opiniões de clientes</h2>
+    <p>${REV_NOTA} Não publicamos opiniões com linguagem ofensiva, dados pessoais de terceiros ou publicidade.</p>
+    <h2>8. Reclamações e resolução de litígios</h2>
+    <p>Pode reclamar diretamente connosco ou no Livro de Reclamações eletrónico (www.livroreclamacoes.pt). Em caso de litígio de consumo, pode recorrer a uma das seguintes entidades de resolução alternativa de litígios:</p>
+    <ul>
+      <li><b>Centro de Arbitragem de Conflitos de Consumo de Lisboa</b> (CACCL) — www.centroarbitragemlisboa.pt — competente para a Área Metropolitana de Lisboa, incluindo a Amadora.</li>
+      <li><b>CNIACC</b> — Centro Nacional de Informação e Arbitragem de Conflitos de Consumo — www.cniacc.pt.</li>
+    </ul>
+    <p>Mais informações no Portal do Consumidor (www.consumidor.gov.pt).</p>`);
 
   /* ---------- PRODUTO ---------- */
   views.product = (_, id) => {
@@ -562,7 +636,7 @@ SSDB.ready.then(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
     if (route === "home" || !views[route] && route !== "p") initSlider();
     if (route === "shishas") applyShishaFilters();
-    document.title = route === "home" ? "Shisha Store Amadora — Shishas, Essências, Carvão e Acessórios" : `${$("#app h1")?.textContent || "Shisha Store"} · Shisha Store Amadora`;
+    document.title = route === "home" ? `Shisha Store Amadora — Shishas, ${semEss ? "" : "Essências, "}Carvão e Acessórios` : `${$("#app h1")?.textContent || "Shisha Store"} · Shisha Store Amadora`;
   }
 
   /* ---------- Slider ---------- */
@@ -786,6 +860,7 @@ SSDB.ready.then(() => {
     el.innerHTML = `<img class="logo__img" src="${src}" alt="Shisha Store">`;
   });
   $("#year").textContent = new Date().getFullYear();
+  if (semEss) $$(`a[href="#/essencias"]${PACKS.length ? "" : ', a[href="#/packs"]'}`).forEach(el => { el.hidden = true; el.style.display = "none"; });
   // Dados da loja editáveis no back office
   const tel = $(".topbar__center a");
   if (tel) { tel.textContent = STORE.telefone; tel.href = "tel:+" + STORE.whatsapp; }
