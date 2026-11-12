@@ -279,7 +279,8 @@
         <div><h3>Primeira vez aqui? É simples:</h3>
           <ol><li><b>Produtos</b> → toca no preço para o mudar, ou no interruptor para marcar como esgotado.</li>
           <li><b>Encomendas</b> → quando um cliente encomenda pelo site, aparece aqui. Vai mudando o estado até "Entregue".</li>
-          <li>Tudo o que mudas fica <b>guardado sozinho</b> e aparece logo na loja.</li></ol></div>
+          <li>Tudo o que mudas fica <b>guardado sozinho</b> e aparece logo na loja.</li></ol>
+          <a class="help__more" href="#/ajuda">❓ Tens dúvidas? Vê as perguntas frequentes →</a></div>
         <button class="icon-btn" data-help-off title="Fechar ajuda"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       </div>`}
       <h2 class="h-sec">O que queres fazer?</h2>
@@ -1100,6 +1101,41 @@
     });
   };
 
+  /* ---------- PERGUNTAS FREQUENTES ---------- */
+  views.ajuda = () => {
+    setHeader("Perguntas frequentes", "Respostas rápidas para usar o painel sem complicações.");
+    const FAQ = window.SS_FAQ || [];
+    $("#view").innerHTML = `
+      <label class="search faq-search">${I.search}<input id="faqQ" type="search" placeholder="O que queres fazer? Ex.: mudar preço, esgotado, foto…" autocomplete="off"></label>
+      <div class="faq-chips">${FAQ.map((g, i) => `<button class="faq-chip" data-faq-go="${i}">${g.ic} ${esc(g.titulo)}</button>`).join("")}</div>
+      <div id="faqList">${FAQ.map((g, i) => `
+        <section class="faq-group" id="faqg${i}">
+          <h2 class="h-sec">${g.ic} ${esc(g.titulo)}</h2>
+          <div class="card faq">${g.itens.map(it => `
+            <details class="faq__item">
+              <summary>${esc(it.q)}</summary>
+              <div class="faq__a">${it.a}${it.ir ? `<p><a class="btn btn--ghost btn--sm" href="${esc(it.ir[0])}">${esc(it.ir[1])} →</a></p>` : ""}</div>
+            </details>`).join("")}</div>
+        </section>`).join("")}</div>
+      <p class="empty" id="faqNone" hidden>Não encontrámos nada com essas palavras. Tenta com outras (ex.: “preço”, “foto”, “encomenda”).</p>
+      <div class="note" style="margin-top:20px">${I.info}<div>Não encontraste a resposta? Fala com quem te criou o site.</div></div>`;
+    const norm = (t) => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    $("#faqQ").addEventListener("input", (e) => {
+      const words = norm(e.target.value).split(/\s+/).filter(w => w.length > 1);
+      let any = false;
+      $$(".faq-group").forEach(g => {
+        let shown = 0;
+        $$(".faq__item", g).forEach(d => {
+          const ok = !words.length || words.every(w => norm(d.textContent).includes(w));
+          d.hidden = !ok; if (ok) shown++;
+          d.open = !!words.length && ok && shown <= 3;
+        });
+        g.hidden = !shown; if (shown) any = true;
+      });
+      $("#faqNone").hidden = any;
+    });
+  };
+
   /* ---------- EXPORTAR / PUBLICAR ---------- */
   views.dados = () => {
     setHeader("Cópias de segurança", LIVE ? "Guarda uma cópia de tudo, por precaução." : "Guarda uma cópia de tudo ou envia as alterações para o site.");
@@ -1211,6 +1247,8 @@ const PACKS = ${J(db.packs)};
       return;
     }
     if (t.dataset.cordel != null && editing) { editing.p.cores.splice(+t.dataset.cordel, 1); return redrawCores(); }
+    // --- Perguntas frequentes ---
+    if (t.dataset.faqGo != null) { const g = $("#faqg" + t.dataset.faqGo); if (g) { g.hidden = false; g.scrollIntoView({ behavior: "smooth", block: "start" }); } return; }
     // --- Opiniões ---
     if (t.dataset.rvTab) { state.rev = t.dataset.rvTab; return views.opinioes(); }
     if (t.matches("[data-rv-new]")) return openReviewEditor();

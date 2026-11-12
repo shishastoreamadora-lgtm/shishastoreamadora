@@ -1,0 +1,127 @@
+/* =========================================================
+   Perguntas frequentes do painel (texto fixo, escrito por nós)
+   Cada grupo: { ic, titulo, itens: [{ q, a, ir: [link, texto] }] }
+   ========================================================= */
+window.SS_FAQ = [
+  {
+    ic: "👋", titulo: "Primeiros passos",
+    itens: [
+      { q: "As alterações que faço aparecem logo na loja?",
+        a: "Sim. Tudo o que mudas fica <b>guardado sozinho</b> e aparece na loja em poucos segundos. Vês a mensagem verde <b>“Guardado”</b> em baixo no ecrã. Se a loja já estava aberta noutra janela, atualiza a página para ver a mudança." },
+      { q: "Posso usar o painel no telemóvel?",
+        a: "Sim. Abre o mesmo endereço no telemóvel e entra com o teu email e palavra-passe. Em baixo tens os botões <b>Resumo, Produtos, Packs e Encomendas</b>; o resto está no botão <b>☰ Menu</b>." },
+      { q: "Como ponho o painel no ambiente de trabalho do computador da loja?",
+        a: "Abre o painel no Google Chrome ou no Microsoft Edge e entra com a tua conta. Depois, no menu <b>⋮</b> do navegador:<ul><li><b>Edge:</b> Aplicações → Instalar este site como uma aplicação.</li><li><b>Chrome:</b> Transmitir, guardar e partilhar → Criar atalho → marca “Abrir como janela”.</li></ul>Fica um ícone no ambiente de trabalho que abre o painel como um programa. Põe sempre palavra-passe no Windows, para ninguém mexer no painel sem autorização." },
+      { q: "Errei! Como desfaço?",
+        a: "Quando apagas alguma coisa, aparece em baixo um botão <b>“Desfazer”</b> durante alguns segundos. Toca nele para recuperar. Se já passou, podes usar uma <b>cópia de segurança</b> (ver “Cópias de segurança” mais abaixo)." },
+    ],
+  },
+  {
+    ic: "📦", titulo: "Produtos",
+    itens: [
+      { q: "Como mudo o preço de um produto?",
+        a: "Vai a <b>Produtos</b> e <b>toca no preço</b> (tem um lápis ✏️ ao lado). Escreve o novo preço e carrega em <b>Enter</b> (ou toca fora da caixa). Pronto, já está na loja.", ir: ["#/produtos", "Ir para Produtos"] },
+      { q: "Acabou o stock. Como marco como esgotado?",
+        a: "Em <b>Produtos</b>, desliga o interruptor <b>“Disponível”</b> desse produto. Na loja aparece <b>“Esgotado”</b> e o cliente não o consegue pôr no carrinho. Quando chegar stock, volta a ligar.", ir: ["#/produtos", "Ir para Produtos"] },
+      { q: "Como adiciono um produto novo?",
+        a: "Toca em <b>“+ Adicionar produto”</b>. Segue os passos:<ol><li>Escolhe o tipo (shisha, essência, carvão, acessório).</li><li>Tira ou escolhe uma <b>foto</b> (fundo limpo fica melhor).</li><li>Escreve o <b>nome</b>, a <b>marca</b> e o <b>preço</b>.</li><li>Carrega em <b>Guardar</b>.</li></ol>", ir: ["#/produtos?novo", "Adicionar produto"] },
+      { q: "Tenho um produto parecido com outro. Tenho de escrever tudo de novo?",
+        a: "Não. Toca em <b>“Duplicar”</b> no produto parecido: cria uma cópia já preenchida. Só mudas o que for diferente (nome, foto, preço) e guardas." },
+      { q: "Como troco a foto de um produto?",
+        a: "Toca em <b>“Editar”</b> no produto → <b>“Trocar foto”</b>. Podes tirar a foto com o telemóvel na hora. A foto é reduzida automaticamente para a loja abrir rápido." },
+      { q: "Uma shisha existe em várias cores. Como faço?",
+        a: "Abre a shisha com <b>“Editar”</b> e desce até <b>“Cores”</b>. Toca nas cores que tens (Preto, Dourado, Azul…) ou em <b>“+ Outra cor”</b> para escrever o nome. Para cada cor podes:<ul><li>pôr uma <b>foto</b> própria (📷);</li><li>desligar o interruptor quando <b>essa cor</b> esgotar.</li></ul>Na loja, o cliente escolhe a cor e ela aparece na encomenda." },
+      { q: "Não quero mostrar o preço (“Sob consulta”). É possível?",
+        a: "Sim. No preço, apaga o número e deixa a caixa vazia. Na loja aparece <b>“Sob consulta”</b> e um botão para o cliente perguntar o preço pelo WhatsApp." },
+      { q: "O que fazem “Destaque”, “Novo” e “Na loja”?",
+        a: "<ul><li><b>Destaque:</b> nas shishas, aparece primeiro quando o cliente ordena por “Em destaque”; nos outros produtos, mostra a etiqueta “Top vendas”.</li><li><b>Novo</b> (dentro de Editar): mostra a etiqueta “Novo”.</li><li><b>Na loja:</b> desliga para <b>esconder</b> o produto da loja sem o apagar.</li></ul>" },
+      { q: "Como apago um produto?",
+        a: "Toca em <b>“Apagar”</b>. Se te enganares, toca logo em <b>“Desfazer”</b>. Se só queres tirá-lo da loja por uns tempos, é melhor desligar <b>“Na loja”</b>." },
+      { q: "O que quer dizer “preço por confirmar”?",
+        a: "São preços que ainda não foram confirmados. Usa o filtro <b>“Preço por confirmar”</b> em Produtos para os ver todos. Quando mudas o preço, a marca desaparece sozinha." },
+    ],
+  },
+  {
+    ic: "🎁", titulo: "Packs",
+    itens: [
+      { q: "Como crio um pack?",
+        a: "Vai a <b>Packs</b> → <b>“Criar pack”</b>. Dá um nome, escolhe os produtos que fazem parte (toca em <b>+</b>) e o painel calcula sozinho um <b>preço com 10% de desconto</b>. Podes mudar o preço à vontade. O cliente vê quanto poupa.", ir: ["#/packs", "Ir para Packs"] },
+    ],
+  },
+  {
+    ic: "🖼️", titulo: "Página inicial da loja",
+    itens: [
+      { q: "Como mudo as fotos grandes do topo (carrossel)?",
+        a: "Vai a <b>Página inicial → Carrossel</b>. Em cada slide toca em <b>“Carregar foto”</b> (do telemóvel ou do computador) ou em <b>“Foto de um produto”</b> para usar a foto de um produto da loja. Podes mudar os textos, o botão e para onde ele leva.", ir: ["#/inicio", "Ir para Página inicial"] },
+      { q: "Como mudo as frases que passam na faixa preta?",
+        a: "Em <b>Página inicial → Faixa</b>. Muda o texto, junta frases novas ou apaga. Também podes escolher a velocidade ou desligar a faixa." },
+      { q: "Como mudo a ordem das secções ou escondo uma?",
+        a: "Em <b>Página inicial → Secções</b>. Usa as setas ↑ ↓ para mudar a ordem e o interruptor para esconder ou mostrar." },
+      { q: "Estraguei a página inicial. Como volto ao início?",
+        a: "Em <b>Página inicial</b>, no fundo, toca em <b>“Repor o desenho original”</b>. Volta ao desenho do início (as fotos e textos que mudaste são substituídos)." },
+    ],
+  },
+  {
+    ic: "🛍️", titulo: "Encomendas",
+    itens: [
+      { q: "Como chega uma encomenda?",
+        a: "O cliente escolhe os produtos, escreve o nome e o telemóvel e carrega em <b>“Encomendar por WhatsApp”</b>. Recebes a mensagem no WhatsApp da loja e a encomenda aparece aqui em <b>Encomendas</b> com o número (#1001, #1002…). Com o painel aberto, avisa-te sozinho a cada 30 segundos.", ir: ["#/encomendas", "Ir para Encomendas"] },
+      { q: "O que faço a seguir?",
+        a: "Toca na encomenda e vai mudando o <b>estado</b>:<ol><li><b>Nova</b> → acabou de chegar.</li><li><b>Confirmada</b> → falaste com o cliente.</li><li><b>Pronta a levantar</b> → está separada na loja.</li><li><b>Entregue</b> → o cliente levou e pagou.</li></ol>Se o cliente desistir, escolhe <b>Cancelada</b>." },
+      { q: "Como aviso o cliente que a encomenda está pronta?",
+        a: "Abre a encomenda, escolhe o estado e toca em <b>“Avisar cliente”</b>. Abre o WhatsApp com a mensagem já escrita para o número do cliente; só tens de carregar em enviar." },
+      { q: "O cliente paga pelo site?",
+        a: "Não. A encomenda é uma <b>reserva</b>: o cliente paga e levanta na loja. Por isso confirma sempre a idade (18+) no levantamento." },
+    ],
+  },
+  {
+    ic: "⭐", titulo: "Opiniões de clientes",
+    itens: [
+      { q: "Um cliente deixou uma opinião. O que faço?",
+        a: "Aparece um número em <b>Opiniões</b>. Lê a opinião e toca em <b>“Publicar na loja”</b> se estiver tudo bem, ou <b>“Apagar”</b> se for spam ou ofensiva. Nada aparece na loja sem tu aprovares.", ir: ["#/opinioes", "Ir para Opiniões"] },
+      { q: "Posso responder a uma opinião?",
+        a: "Sim. Escreve na caixa <b>“Resposta da loja”</b> e toca fora da caixa: fica guardada e aparece por baixo da opinião na loja." },
+      { q: "Um cliente disse-me pessoalmente que gostou. Posso pôr isso no site?",
+        a: "Sim, com autorização dele. Toca em <b>“Juntar opinião”</b>, escreve o nome, as estrelas e o que ele disse. Também serve para opiniões que recebeste no Google ou no Instagram. <b>Nunca inventes opiniões</b>: é proibido por lei." },
+      { q: "Posso apagar uma opinião má?",
+        a: "Só se for ofensiva, falsa ou spam. Uma crítica verdadeira <b>não deve ser apagada</b> (a loja diz aos clientes que não apaga opiniões negativas). O melhor é <b>responder</b> com educação — isso transmite confiança." },
+    ],
+  },
+  {
+    ic: "🏪", titulo: "Dados da loja",
+    itens: [
+      { q: "Como mudo o horário, o telefone ou a morada?",
+        a: "Vai a <b>Dados da loja</b>, muda o que precisas e carrega em <b>“Guardar”</b> (botão em cima, à direita).", ir: ["#/loja", "Ir para Dados da loja"] },
+      { q: "Como ponho um aviso no topo da loja (ex.: “Fechado no feriado”)?",
+        a: "Em <b>Dados da loja → Aviso no topo da loja</b>. Escreve a frase e guarda. Para tirar, apaga o texto e guarda outra vez." },
+      { q: "Para que servem o nome da empresa, o NIF e o email?",
+        a: "A lei obriga a mostrá-los na loja online (Termos e Política de privacidade). <b>Preenche-os uma vez</b>; enquanto estiverem vazios, essas páginas mostram espaços em branco." },
+      { q: "O que faz o interruptor “Mostrar as essências no site”?",
+        a: "A Lei do Tabaco proíbe vender e anunciar tabaco pela internet. Se o desligares, o site <b>esconde</b> as essências, os packs que as incluem e as frases sobre elas. <b>Nada é apagado</b>: continuam no painel e voltam com um toque." },
+      { q: "Como mudo a palavra-passe do painel?",
+        a: "Em <b>Dados da loja → Segurança</b>, escreve a nova palavra-passe (mínimo 10 caracteres) e toca em <b>“Mudar palavra-passe”</b>. Não a partilhes com ninguém." },
+    ],
+  },
+  {
+    ic: "💾", titulo: "Cópias de segurança",
+    itens: [
+      { q: "Para que serve uma cópia de segurança?",
+        a: "É um ficheiro com <b>todos os produtos, dados da loja e encomendas</b>. Se algo correr mal, podes voltar a pôr tudo como estava. Recomendamos fazer <b>uma por mês</b>.", ir: ["#/dados", "Ir para Cópias de segurança"] },
+      { q: "Como faço e como recupero uma cópia?",
+        a: "<ul><li><b>Fazer:</b> Cópias de segurança → <b>“Descarregar cópia”</b>. Guarda o ficheiro numa pen ou no email.</li><li><b>Recuperar:</b> Cópias de segurança → <b>“Escolher ficheiro”</b> → escolhe a cópia → confirma.</li></ul>" },
+    ],
+  },
+  {
+    ic: "🛟", titulo: "Problemas",
+    itens: [
+      { q: "Aparece “Não foi possível guardar”.",
+        a: "Normalmente é a internet. Verifica a ligação e tenta outra vez. Se continuar, fecha o painel, volta a abrir e repete." },
+      { q: "Mudei uma coisa mas não aparece na loja.",
+        a: "A loja já aberta pode estar a mostrar a versão antiga. Atualiza a página: no computador <b>Ctrl + Shift + R</b>; no telemóvel fecha o separador e abre outra vez." },
+      { q: "O painel pediu-me para entrar outra vez.",
+        a: "Por segurança, a sessão pode terminar. Entra de novo com o teu email e palavra-passe." },
+      { q: "Esqueci-me da palavra-passe.",
+        a: "Contacta quem te criou o site: consegue pôr uma palavra-passe nova na conta da loja. Depois muda-a tu em <b>Dados da loja → Segurança</b>." },
+    ],
+  },
+];
