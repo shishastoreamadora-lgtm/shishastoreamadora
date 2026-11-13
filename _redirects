@@ -1,0 +1,5 @@
+# Ficheiros técnicos que não fazem parte da loja: reencaminha para a página inicial.
+/supabase/* / 302
+/server.js / 302
+/README.md / 302
+/.github/* / 302

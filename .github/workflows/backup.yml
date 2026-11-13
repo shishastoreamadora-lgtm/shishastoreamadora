@@ -1,0 +1,64 @@
+# Cópia de segurança semanal da base de dados (produtos, encomendas, opiniões, definições).
+#
+# O repositório é público, por isso a cópia é CIFRADA antes de ser guardada:
+# sem a frase-passe ninguém a consegue abrir.
+#
+# Precisa de 2 segredos em Settings → Secrets and variables → Actions:
+#   SUPABASE_DB_URL     → Supabase → Connect → "Session pooler" (URI com a palavra-passe da base de dados)
+#   BACKUP_PASSPHRASE   → uma frase longa à tua escolha (guarda-a bem: sem ela não se restaura)
+#
+# A cópia fica em Actions → "Cópia de segurança" → execução → Artifacts (60 dias).
+# Restaurar: gpg -d backup.sql.gz.gpg | gunzip > backup.sql   e correr no SQL Editor do Supabase.
+# Nota: as fotos (Storage) não entram aqui; estão no Supabase e no painel → Cópias de segurança.
+name: Cópia de segurança
+
+on:
+  schedule:
+    - cron: "41 3 * * 0"     # domingos às 03:41 UTC
+  workflow_dispatch:          # permite correr à mão em Actions → Run workflow
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar segredos
+        env:
+          DB: ${{ secrets.SUPABASE_DB_URL }}
+          PP: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$DB" ] || [ -z "$PP" ]; then
+            echo "::error::Faltam os segredos SUPABASE_DB_URL e/ou BACKUP_PASSPHRASE (ver comentário no topo do ficheiro)."
+            exit 1
+          fi
+
+      - name: Instalar pg_dump 17
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Exportar e cifrar
+        env:
+          DB: ${{ secrets.SUPABASE_DB_URL }}
+          PP: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -o pipefail
+          F="backup-$(date -u +%Y-%m-%d).sql.gz.gpg"
+          /usr/lib/postgresql/17/bin/pg_dump "$DB" --schema=public --no-owner --no-privileges \
+            | gzip -9 \
+            | gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 --passphrase-fd 3 -o "$F" 3<<<"$PP"
+          test -s "$F"
+          echo "FILE=$F" >> "$GITHUB_ENV"
+          ls -lh "$F"
+
+      - name: Guardar cópia
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FILE }}
+          path: ${{ env.FILE }}
+          retention-days: 60
+          if-no-files-found: error
