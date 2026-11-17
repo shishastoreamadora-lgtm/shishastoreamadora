@@ -143,6 +143,23 @@
   }
   const pendingReviews = () => reviews.filter(r => !r.aprovado).length;
 
+  /* ---------- Domínio: aviso de renovação (20 dias antes) ---------- */
+  const DOMINIO_PADRAO = { nome: "shishastoreamadora.pt", expira: "2027-11-17", registador: "dominios.pt" };
+  const AVISO_DIAS = 20;
+  const dominio = () => ({ ...DOMINIO_PADRAO, ...(db.store.dominio || {}) });
+  const diasDominio = () => {
+    const e = new Date(dominio().expira + "T00:00:00"), h = new Date(); h.setHours(0, 0, 0, 0);
+    return Math.round((e - h) / 864e5);
+  };
+  const dataLonga = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("pt-PT", { day: "numeric", month: "long", year: "numeric" });
+  const avisoDominio = () => diasDominio() <= AVISO_DIAS;
+  const textoDominio = () => {
+    const n = diasDominio(), d = dominio();
+    return n < 0 ? `O domínio ${d.nome} expirou a ${dataLonga(d.expira)}. A loja pode estar fora do ar: renova já em ${d.registador}.`
+      : n === 0 ? `O domínio ${d.nome} expira HOJE. Renova já em ${d.registador} para a loja não sair do ar.`
+      : `O domínio ${d.nome} expira a ${dataLonga(d.expira)} (faltam ${n} dia${n > 1 ? "s" : ""}). Renova em ${d.registador} para a loja não sair do ar.`;
+  };
+
   /* ---------- Ajudas de produto ---------- */
   const nameOf = (p) => p.nome || p.sabor || "Sem nome";
   const priceOf = (p) => p.preco ?? (p.precos ? Object.values(p.precos)[0] : null);
@@ -274,6 +291,7 @@
     const hora = now.getHours();
     setHeader(`${hora < 13 ? "Bom dia" : hora < 20 ? "Boa tarde" : "Boa noite"}! 👋`, `Este é o resumo da ${db.store.nome} hoje.`, `<a class="btn btn--ghost" href="index.html" target="_blank">${I.eye} Ver a minha loja</a>`);
     $("#view").innerHTML = `
+      ${avisoDominio() ? `<a href="#/loja" class="alert-dom"><b>🌐 Renovar o domínio</b><span>${esc(textoDominio())}</span><span class="alert-dom__go">Já renovei → atualizar a data</span></a>` : ""}
       ${ls.get("ss_help_off", false) ? "" : `
       <div class="help">
         <div><h3>Primeira vez aqui? É simples:</h3>
@@ -322,7 +340,8 @@
         </div>
         <div class="card">
           <div class="card__head"><h3>Precisa de atenção</h3></div>
-          ${out.length || toConfirm.length || pendingReviews() ? `<ul class="list">
+          ${out.length || toConfirm.length || pendingReviews() || avisoDominio() ? `<ul class="list">
+            ${avisoDominio() ? `<li><a href="#/loja" class="list__link"><span class="thumb" style="background:#fee2e2;color:#b91c1c">🌐</span><div class="list__main"><strong>Renovar o domínio ${esc(dominio().nome)}</strong><span>${diasDominio() < 0 ? "Expirou" : diasDominio() === 0 ? "Expira hoje" : `Expira a ${esc(dataLonga(dominio().expira))} · faltam ${diasDominio()} dias`}</span></div><span class="pill st-esgotado">Urgente</span></a></li>` : ""}
             ${pendingReviews() ? `<li><a href="#/opinioes" class="list__link"><span class="thumb" style="background:#fdf3e1;color:#8c6d3f">★</span><div class="list__main"><strong>${pendingReviews()} opini${pendingReviews() > 1 ? "ões" : "ão"} por aprovar</strong><span>Lê e publica na loja</span></div><span class="pill st-nova">Ver</span></a></li>` : ""}
             ${out.map(({ p }) => `<li style="cursor:pointer" data-edit="${p.id}">${thumb(p)}<div class="list__main"><strong>${esc(nameOf(p))}</strong><span>Sem stock</span></div><span class="pill st-esgotado">Esgotado</span></li>`).join("")}
             ${toConfirm.slice(0, 6).map(({ p }) => `<li style="cursor:pointer" data-edit="${p.id}">${thumb(p)}<div class="list__main"><strong>${esc(nameOf(p))}</strong><span>Preço por confirmar</span></div><span class="pill st-confirmada">Confirmar</span></li>`).join("")}
@@ -1067,6 +1086,15 @@
           <div class="card"><div class="card__head"><h3>Horário</h3></div><div class="card__body"><div class="form" id="hours">
             ${[0, 1, 2].map(i => `<div class="row"><div class="field"><input data-h="${i}" data-k="0" value="${esc(h[i]?.[0] || "")}" placeholder="Dias"></div><div class="field"><input data-h="${i}" data-k="1" value="${esc(h[i]?.[1] || "")}" placeholder="Horas"></div></div>`).join("")}
           </div></div></div>
+          <div class="card"><div class="card__head"><h3>Domínio da loja</h3>${avisoDominio() ? `<span class="pill st-esgotado">Renovar</span>` : `<span class="pill st-entregue">Em dia</span>`}</div><div class="card__body"><div class="form">
+            <div class="row">
+              <div class="field"><label>Domínio</label><input id="domNome" value="${esc(dominio().nome)}"></div>
+              <div class="field"><label>Expira a</label><input id="domExpira" type="date" value="${esc(dominio().expira)}"></div>
+            </div>
+            <div class="field"><label>Onde se renova</label><input id="domReg" value="${esc(dominio().registador)}" placeholder="Ex.: dominios.pt"></div>
+            <small class="muted">${esc(textoDominio().replace(/ Renova.*$/, ""))} O painel e o email da loja avisam ${AVISO_DIAS} dias antes.</small>
+            <div class="row"><button class="btn btn--ghost btn--sm" id="domSave" type="button">Guardar domínio</button><button class="btn btn--gold btn--sm" id="domRenovei" type="button">Já renovei (+1 ano)</button></div>
+          </div></div></div>
           <div class="card"><div class="card__head"><h3>Essências na loja online</h3></div><div class="card__body"><div class="form">
             <label class="switch"><input type="checkbox" id="mostrarEss" ${s.ocultarEssencias ? "" : "checked"}><i></i><span><b>Mostrar as essências no site</b><small>${s.ocultarEssencias ? "Escondidas: o site não mostra essências, packs com essências nem frases sobre elas." : "Visíveis no site."}</small></span></label>
             <small class="muted">A Lei do Tabaco (Lei 37/2007, art. 15.º e 16.º) proíbe vender e anunciar tabaco e produtos à base de plantas para fumar pela internet. Desligar esconde-as do site sem as apagar: continuam aqui no painel e voltam com um toque.</small>
@@ -1087,6 +1115,20 @@
       const pin = $("#newPin")?.value.trim();
       if (pin) { if (!/^\d{4,8}$/.test(pin)) return toast("O PIN deve ter 4 a 8 números", true); db.store.pin = pin; }
       save("Dados da loja guardados");
+    });
+    const guardarDominio = (expira, msg) => {
+      const nome = $("#domNome").value.trim().toLowerCase(), registador = $("#domReg").value.trim();
+      if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(nome)) return toast("Escreve o domínio, ex.: shishastoreamadora.pt", true);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(expira)) return toast("Escolhe a data em que o domínio expira", true);
+      db.store.dominio = { nome, expira, registador: registador || DOMINIO_PADRAO.registador };
+      save(msg); views.loja();
+    };
+    $("#domSave").addEventListener("click", () => guardarDominio($("#domExpira").value, "Domínio guardado"));
+    $("#domRenovei").addEventListener("click", () => {
+      const d = new Date(dominio().expira + "T00:00:00"); d.setFullYear(d.getFullYear() + 1);
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      if (!confirm(`Confirmas que já pagaste a renovação? A nova data de expiração passa a ${dataLonga(iso)}.`)) return;
+      guardarDominio(iso, "Renovação registada. Próximo aviso: 20 dias antes de " + dataLonga(iso));
     });
     $("#mostrarEss").addEventListener("change", (e) => {
       if (e.target.checked) delete db.store.ocultarEssencias; else db.store.ocultarEssencias = true;

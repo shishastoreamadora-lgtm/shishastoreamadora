@@ -1,24 +1,61 @@
-# Mantém a base de dados Supabase ativa.
-# No plano gratuito, o Supabase pausa o projeto ao fim de 7 dias sem atividade.
-# Esta tarefa faz uma leitura pública do catálogo 2 vezes por semana.
+# Mantém a loja ativa — corre TODOS OS DIAS.
+#
+# 1) O Supabase (plano gratuito) pausa o projeto ao fim de 7 dias sem atividade:
+#    esta tarefa lê o catálogo e as definições todos os dias, por isso nunca passam 7 dias.
+# 2) O GitHub desliga as tarefas automáticas de repositórios públicos ao fim de 60 dias
+#    sem atividade: no dia 1 de cada mês esta tarefa grava um pequeno registo
+#    (.github/heartbeat.txt) para o repositório nunca ficar "parado".
+# 3) Se a leitura falhar, abre uma issue a mencionar a conta da loja → chega um EMAIL.
 name: Manter base de dados ativa
 
 on:
   schedule:
-    - cron: "17 9 * * 1,4"   # segundas e quintas às 09:17 UTC
+    - cron: "17 9 * * *"     # todos os dias às 09:17 UTC
   workflow_dispatch:          # permite correr à mão em Actions → Run workflow
 
 permissions:
-  contents: read
+  contents: write
+  issues: write
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ler o catálogo (chave pública)
+      - name: Ler o catálogo e as definições (chave pública)
         run: |
-          URL=$(grep -oE 'https://[a-z0-9]+\.supabase\.co' <<< "$(curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/js/config.js)")
-          KEY=$(grep -oE 'sb_publishable_[A-Za-z0-9_-]+' <<< "$(curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/js/config.js)")
-          code=$(curl -s -o /dev/null -w "%{http_code}" "$URL/rest/v1/catalog?select=id&limit=1" -H "apikey: $KEY")
-          echo "Supabase respondeu: $code"
-          test "$code" = "200"
+          CFG=$(curl -fsSL --retry 3 https://raw.githubusercontent.com/${{ github.repository }}/main/js/config.js)
+          URL=$(grep -oE 'https://[a-z0-9]+\.supabase\.co' <<< "$CFG" | head -1)
+          KEY=$(grep -oE 'sb_publishable_[A-Za-z0-9_-]+' <<< "$CFG" | head -1)
+          ok=0
+          for t in 1 2 3; do
+            a=$(curl -s -o /dev/null -w "%{http_code}" "$URL/rest/v1/catalog?select=id&limit=1" -H "apikey: $KEY")
+            b=$(curl -s -o /dev/null -w "%{http_code}" "$URL/rest/v1/settings?select=id&limit=1" -H "apikey: $KEY")
+            echo "Tentativa $t → catálogo: $a · definições: $b"
+            [ "$a" = "200" ] && [ "$b" = "200" ] && { ok=1; break; }
+            sleep 30
+          done
+          test "$ok" = "1"
+
+      - name: Registo mensal (evita que o GitHub desligue as tarefas)
+        run: |
+          [ "$(date -u +%d)" = "01" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ] || { echo "Só no dia 1 do mês."; exit 0; }
+          git clone --depth 1 "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" repo
+          cd repo
+          mkdir -p .github
+          echo "Última verificação automática: $(date -u +%Y-%m-%dT%H:%MZ)" > .github/heartbeat.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/heartbeat.txt
+          git commit -m "Registo mensal automático (mantém as tarefas ativas)" || exit 0
+          git push
+
+      - name: Avisar por email se falhar
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create -R "${{ github.repository }}" \
+            --title "⚠️ A loja não respondeu ($(date -u +%Y-%m-%d))" \
+            --body "@shishastoreamadora-lgtm A verificação diária da base de dados falhou.
+          Abre o Supabase (supabase.com → projeto da loja). Se o projeto estiver **pausado**, carrega em **Restore**.
+          Detalhes: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

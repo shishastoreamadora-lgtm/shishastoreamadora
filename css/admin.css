@@ -460,3 +460,9 @@ table.t { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .faq__a p { margin: 10px 0 0; }
 .help__more { display: inline-block; margin-top: 10px; color: #e9d4ad; font-weight: 600; text-decoration: none; }
 .help__more:hover { text-decoration: underline; }
+
+/* Aviso de renovação do domínio */
+.alert-dom { display: flex; flex-direction: column; gap: 4px; background: #fef2f2; border: 1px solid #fecaca; border-left: 5px solid #dc2626; border-radius: 12px; padding: 14px 18px; margin-bottom: 18px; color: #7f1d1d; text-decoration: none; font-size: 14px; }
+.alert-dom b { font-size: 15px; color: #991b1b; }
+.alert-dom__go { font-weight: 600; font-size: 13px; color: #b91c1c; }
+.alert-dom:hover { background: #fee2e2; }

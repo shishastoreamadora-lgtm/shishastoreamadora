@@ -1,0 +1,80 @@
+# Aviso de renovação do domínio por EMAIL.
+#
+# Corre todos os dias. A partir de 20 dias antes da data de expiração abre uma
+# "issue" no GitHub a mencionar a conta da loja: o GitHub envia um EMAIL para o
+# endereço da conta (o Gmail da loja). Volta a lembrar a 10, 5, 2, 1 e 0 dias.
+#
+# A data vem do painel (Dados da loja → Domínio da loja). Se o painel não responder,
+# usa a data de reserva abaixo. Depois de renovar: toca em "Já renovei (+1 ano)" no painel
+# e fecha a issue.
+#
+# Testar: Actions → "Aviso de renovação do domínio" → Run workflow → teste = sim
+name: Aviso de renovação do domínio
+
+on:
+  schedule:
+    - cron: "5 8 * * *"        # todos os dias às 08:05 UTC
+  workflow_dispatch:
+    inputs:
+      teste:
+        description: "Enviar um email de teste agora (sim/não)"
+        default: "não"
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  DOMINIO_RESERVA: shishastoreamadora.pt
+  EXPIRA_RESERVA: "2027-11-17"
+  AVISO_DIAS: "20"
+  DONO: shishastoreamadora-lgtm
+
+jobs:
+  aviso:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ler a data do painel e avisar
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TESTE: ${{ github.event.inputs.teste }}
+        run: |
+          CFG=$(curl -fsSL "https://raw.githubusercontent.com/$REPO/main/js/config.js" || true)
+          URL=$(grep -oE 'https://[a-z0-9]+\.supabase\.co' <<< "$CFG" | head -1)
+          KEY=$(grep -oE 'sb_publishable_[A-Za-z0-9_-]+' <<< "$CFG" | head -1)
+          DOM="$DOMINIO_RESERVA"; EXP="$EXPIRA_RESERVA"; REG="dominios.pt"
+          if [ -n "$URL" ] && [ -n "$KEY" ]; then
+            J=$(curl -fsS "$URL/rest/v1/settings?select=store&id=eq.1" -H "apikey: $KEY" || echo "[]")
+            D=$(jq -r '.[0].store.dominio.nome // empty' <<< "$J"); E=$(jq -r '.[0].store.dominio.expira // empty' <<< "$J"); R=$(jq -r '.[0].store.dominio.registador // empty' <<< "$J")
+            [ -n "$D" ] && DOM="$D"; [[ "$E" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] && EXP="$E"; [ -n "$R" ] && REG="$R"
+          fi
+          HOJE=$(date -u +%Y-%m-%d)
+          DIAS=$(( ( $(date -u -d "$EXP" +%s) - $(date -u -d "$HOJE" +%s) ) / 86400 ))
+          echo "Domínio: $DOM · expira: $EXP · faltam: $DIAS dias"
+
+          if [ "$TESTE" = "sim" ]; then
+            gh issue create -R "$REPO" --title "🧪 Teste do aviso do domínio ($HOJE)" \
+              --body "@$DONO Isto é só um **teste**: se recebeste este email, o aviso automático funciona.
+          Domínio: **$DOM** · expira a **$EXP** (faltam $DIAS dias) · o aviso real chega $AVISO_DIAS dias antes.
+          Podes fechar esta issue."
+            exit 0
+          fi
+
+          [ "$DIAS" -gt "$AVISO_DIAS" ] && { echo "Ainda não é altura de avisar."; exit 0; }
+          [ "$DIAS" -lt -30 ] && { echo "Expirou há mais de 30 dias: atualiza a data no painel."; exit 0; }
+
+          TITULO="🌐 Renovar o domínio $DOM (expira a $EXP)"
+          N=$(gh issue list -R "$REPO" --state open --search "\"Renovar o domínio $DOM\" in:title" --json number --jq '.[0].number // empty')
+          MSG="@$DONO ⚠️ O domínio **$DOM** expira a **$EXP** (faltam **$DIAS dias**).
+          1. Renova em **$REG** (área de cliente → Domínios → Renovar).
+          2. No painel da loja: **Dados da loja → Domínio da loja → \"Já renovei (+1 ano)\"**.
+          3. Fecha esta issue.
+          Se não renovares, a loja sai do ar no dia seguinte à expiração."
+          if [ -z "$N" ]; then
+            gh issue create -R "$REPO" --title "$TITULO" --body "$MSG"
+          elif [[ " 10 5 2 1 0 " == *" $DIAS "* ]] || [ "$DIAS" -lt 0 ]; then
+            gh issue comment "$N" -R "$REPO" --body "$MSG"
+          else
+            echo "Aviso já aberto (#$N); próximo lembrete a 10, 5, 2, 1 e 0 dias."
+          fi
