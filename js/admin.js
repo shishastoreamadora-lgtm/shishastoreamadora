@@ -427,7 +427,7 @@
         <td class="td-prod"><div class="prod" style="cursor:pointer" data-edit="${p.id}">${thumb(p)}<div><strong>${esc(nameOf(p))}</strong><span>${esc(p.marca || "")}${p.altura ? ` · ${p.altura} cm` : ""}${p.cores?.length ? ` · ${p.cores.length} cor${p.cores.length > 1 ? "es" : ""}` : ""}</span></div></div></td>
         <td data-label="Categoria">${CATS[cat].label}</td>
         <td data-label="Preço" class="price">${p.precos
-          ? Object.entries(p.precos).map(([k, v]) => `<button class="price-btn" data-price="${p.id}" data-size="${k}" title="Tocar para mudar">${eur(v)} <span class="muted">${k}</span> ${I.pen}</button>`).join("")
+          ? Object.entries(p.precos).map(([k, v]) => `<button class="price-btn" data-price="${p.id}" data-size="${k}" title="Tocar para mudar">${v == null ? "Sob consulta" : eur(v)} <span class="muted">${k}</span> ${I.pen}</button>`).join("")
           : `<button class="price-btn" data-price="${p.id}" title="Tocar para mudar">${priceOf(p) == null ? `<span class="muted">Sob consulta</span>` : eur(priceOf(p))} ${I.pen}</button>`}${p.confirmar ? "<small>por confirmar</small>" : ""}</td>
         <td data-label="Disponível"><label class="switch"><input type="checkbox" data-toggle="stock" data-id="${p.id}" ${p.esgotado ? "" : "checked"}><i></i>${p.esgotado ? "Esgotado" : "Sim"}</label></td>
         <td data-label="Destaque"><label class="switch switch--gold"><input type="checkbox" data-toggle="destaque" data-id="${p.id}" ${p.destaque || p.top ? "checked" : ""}><i></i></label></td>
@@ -455,7 +455,6 @@
       if (ok) {
         const v = inp.value.trim(), n = v === "" ? null : Math.round(parseFloat(v.replace(",", ".")) * 100) / 100;
         if (v !== "" && (isNaN(n) || n < 0)) toast("Preço inválido", true);
-        else if (size && n == null) toast("Escreve um preço", true);
         else if (n !== cur) {
           if (size) f.p.precos[size] = n; else f.p.preco = n;
           delete f.p.confirmar;
@@ -496,7 +495,12 @@
       <div class="field"><label for="f_inclui">O que inclui</label><input id="f_inclui" name="inclui" value="${esc(p.inclui || "")}" placeholder="Mangueira, pinça, cabeçote de barro"><small>Deixa o preço vazio para mostrar "Sob consulta".</small></div>`;
     else if (cat === "essencias") specific = `
       <div class="field"><label for="f_notas">Notas de sabor</label><input id="f_notas" name="notas" value="${esc(p.notas || "")}" placeholder="Melancia, melão e menta"></div>
-      <div class="row">${money("p50", "Preço 50g", p.precos?.["50g"])}${money("p200", "Preço 200g", p.precos?.["200g"])}</div>`;
+      <div class="row">
+        <label class="switch"><input type="checkbox" name="t50" ${p.precos && "50g" in p.precos ? "checked" : ""}><i></i><span><b>Vende-se em 50g</b><small>Tamanho disponível</small></span></label>
+        <label class="switch"><input type="checkbox" name="t200" ${!p.precos || "200g" in p.precos ? "checked" : ""}><i></i><span><b>Vende-se em 200g</b><small>Tamanho disponível</small></span></label>
+      </div>
+      <div class="row">${money("p50", "Preço 50g (opcional)", p.precos?.["50g"]).replace('placeholder="0,00"', 'placeholder="Sob consulta"')}${money("p200", "Preço 200g (opcional)", p.precos?.["200g"]).replace('placeholder="0,00"', 'placeholder="Sob consulta"')}</div>
+      <small class="muted">Deixa o preço vazio para mostrar "Sob consulta". Os preços das essências só aparecem no site se ligares "Mostrar os preços das essências" em Dados da loja.</small>`;
     else if (cat === "packs") specific = `
       ${money("preco", "Preço", p.preco)}
       <div class="field"><label for="f_inclui">O que inclui</label><textarea id="f_inclui" name="incluiPack" placeholder="Um item por linha">${esc((p.inclui || []).join("\n"))}</textarea><small>Um item por linha.</small></div>`;
@@ -584,7 +588,14 @@
     if (cat === "essencias") { p.sabor = v("sabor") ?? p.sabor; delete p.nome; } else if (v("nome") != null) p.nome = v("nome");
     if (form.elements.marca) p.marca = v("marca");
     if (cat === "shishas") { p.altura = num("altura") ?? p.altura ?? 40; p.estilo = v("estilo") || "moderno"; p.inclui = v("inclui") || ""; p.preco = num("preco"); }
-    else if (cat === "essencias") { p.notas = v("notas") || ""; p.precos = {}; const a = num("p50"), b = num("p200"); if (a != null) p.precos["50g"] = a; if (b != null) p.precos["200g"] = b; delete p.preco; }
+    else if (cat === "essencias") {
+      // tamanho escolhido = disponível; o preço é opcional (vazio = "Sob consulta")
+      p.notas = v("notas") || ""; p.precos = {};
+      const a = num("p50"), b = num("p200");
+      if (ch("t50") || a != null) p.precos["50g"] = a;
+      if (ch("t200") || b != null) p.precos["200g"] = b;
+      delete p.preco;
+    }
     else if (cat === "packs") { p.preco = num("preco"); p.inclui = (form.elements.incluiPack?.value || "").split("\n").map(s => s.trim()).filter(Boolean); }
     else p.preco = num("preco");
     p.cor = form.elements.cor?.value || p.cor;
@@ -600,7 +611,7 @@
     readForm();
     const { cat, p } = editing;
     if (!nameOf(p) || nameOf(p) === "Sem nome") { $("#prodForm .field input[required]").closest(".field").classList.add("field--err"); toast("Falta o nome do produto", true); return; }
-    if (cat === "essencias" && !Object.keys(p.precos || {}).length) { toast("Indica pelo menos um preço", true); return; }
+    if (cat === "essencias" && !Object.keys(p.precos || {}).length) { toast("Escolhe pelo menos um tamanho (50g ou 200g)", true); return; }
     if (cat === "packs" && !p.inclui.length) p.inclui = ["Shisha"];
     // limpar campos de outras categorias (ao trocar de tipo num produto novo)
     if (cat !== "shishas") { delete p.altura; delete p.estilo; delete p.cores; if (cat !== "packs") delete p.inclui; }
@@ -739,7 +750,7 @@
     let list = allProducts().filter(({ cat }) => cat !== "packs");
     if (q) list = list.filter(({ p }) => `${nameOf(p)} ${p.marca || ""}`.toLowerCase().includes(q));
     $("#pkList").innerHTML = list.slice(0, q ? 30 : 8).map(({ p, cat }) => `
-      <div class="pk-row">${thumb(p)}<div class="list__main"><strong>${esc(nameOf(p))}</strong><span>${CATS[cat].label} · ${p.precos ? eur(Object.values(p.precos)[0]) : priceOf(p) == null ? "Sob consulta" : eur(priceOf(p))}</span></div>
+      <div class="pk-row">${thumb(p)}<div class="list__main"><strong>${esc(nameOf(p))}</strong><span>${CATS[cat].label} · ${p.precos && Object.values(p.precos)[0] != null ? eur(Object.values(p.precos)[0]) : priceOf(p) == null ? "Sob consulta" : eur(priceOf(p))}</span></div>
         ${chosen.has(p.id) ? `<span class="pill st-entregue">No pack</span>` : `<button type="button" class="act" data-pk-add="${p.id}">${I.plus}<span>Juntar</span></button>`}</div>`).join("")
       + (!q ? `<p class="muted" style="font-size:12px;margin:6px 0 0">A mostrar 8 produtos. Escreve para procurar os outros.</p>` : "");
   }
