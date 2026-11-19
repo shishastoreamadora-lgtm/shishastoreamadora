@@ -1,10 +1,14 @@
 /* =========================================================
    Vigia do botão de emergência (painel → 🚨 Emergência)
    Quando o painel esconde/mostra as essências, todas as lojas abertas
-   (telemóveis e computadores) recarregam sozinhas:
-     1) instantâneo  → Supabase Realtime (precisa de supabase/004-emergencia.sql)
-     2) segurança    → verificação a cada 30 s, ao voltar à página e ao recuperar a internet
-     3) demonstração → sem Supabase, outras abas do mesmo navegador
+   (telemóveis e computadores) recarregam sozinhas, sem o cliente tocar em nada.
+   Três caminhos (basta um funcionar):
+     1) sinal direto do painel   → Supabase Realtime "broadcast" (instantâneo)
+     2) alteração na base de dados → Supabase Realtime "postgres_changes" (instantâneo)
+     3) segurança                → verificação a cada 15 s, ao voltar à página,
+                                    ao recuperar a internet e ao tocar na página
+   Qualquer sinal leva sempre a confirmar o valor na base de dados antes de recarregar.
+   Sem Supabase (demonstração): outras abas do mesmo navegador.
    Carregado depois de app.js.
    ========================================================= */
 (function () {
@@ -12,6 +16,7 @@
   const live = !!(C.SUPABASE_URL && C.SUPABASE_ANON_KEY);
   const SB_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js";
   const SB_SRI = "sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o";
+  const CANAL = "loja-vigia";
 
   SSDB.ready.then(() => {
     const atual = typeof STORE !== "undefined" && !!STORE.ocultarEssencias;
@@ -48,11 +53,12 @@
       return;
     }
 
-    /* ---- Verificação periódica (funciona sempre, mesmo sem Realtime) ---- */
-    let aVerificar = false;
-    async function verificar() {
-      if (aVerificar || feito || document.visibilityState !== "visible") return;
-      aVerificar = true;
+    /* ---- Confirmar o valor na base de dados ---- */
+    let aVerificar = false, ultima = 0;
+    async function verificar(forcar) {
+      if (feito || aVerificar) return;
+      if (!forcar && (document.visibilityState !== "visible" || Date.now() - ultima < 4000)) return;
+      aVerificar = true; ultima = Date.now();
       try {
         const r = await fetch(`${C.SUPABASE_URL}/rest/v1/settings?select=oc:store->ocultarEssencias&id=eq.1`, {
           headers: { apikey: C.SUPABASE_ANON_KEY, Authorization: `Bearer ${C.SUPABASE_ANON_KEY}` }, cache: "no-store",
@@ -60,27 +66,34 @@
         if (r.ok) { const d = await r.json(); if (Array.isArray(d) && d.length) recarregar(d[0].oc === true); }
       } catch (e) {} finally { aVerificar = false; }
     }
-    setInterval(verificar, 30000);
-    document.addEventListener("visibilitychange", verificar);
-    window.addEventListener("online", verificar);
-    window.addEventListener("pageshow", (e) => { if (e.persisted) verificar(); });
+
+    setInterval(() => verificar(false), 15000);
+    document.addEventListener("visibilitychange", () => verificar(false));
+    window.addEventListener("focus", () => verificar(false));
+    window.addEventListener("online", () => verificar(true));
+    window.addEventListener("pageshow", (e) => { if (e.persisted) verificar(true); });
+    // o cliente continua a navegar → confirma (no máximo 1 vez a cada 4 s)
+    window.addEventListener("hashchange", () => verificar(false));
+    document.addEventListener("pointerdown", () => verificar(false), { passive: true });
 
     /* ---- Tempo real (instantâneo). Carrega depois da página para não a atrasar ---- */
+    function ligarTempoReal() {
+      try {
+        const sb = window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
+          auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+        });
+        sb.channel(CANAL)
+          .on("broadcast", { event: "emergencia" }, () => verificar(true))
+          .on("postgres_changes", { event: "*", schema: "public", table: "settings" }, () => verificar(true))
+          .subscribe((estado) => { if (estado === "SUBSCRIBED") verificar(true); });
+      } catch (e) { /* sem tempo real: a verificação de 15 s continua a funcionar */ }
+    }
     setTimeout(() => {
+      if (window.supabase?.createClient) return ligarTempoReal();
       const s = document.createElement("script");
       s.src = SB_JS; s.integrity = SB_SRI; s.crossOrigin = "anonymous"; s.async = true;
-      s.onload = () => {
-        try {
-          const sb = window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
-            auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-          });
-          sb.channel("loja-vigia")
-            .on("postgres_changes", { event: "UPDATE", schema: "public", table: "settings", filter: "id=eq.1" },
-              (p) => recarregar(p && p.new && p.new.store && p.new.store.ocultarEssencias))
-            .subscribe();
-        } catch (e) { /* sem tempo real: a verificação de 30 s continua a funcionar */ }
-      };
+      s.onload = ligarTempoReal;
       document.head.appendChild(s);
-    }, 2000);
+    }, 1500);
   });
 })();

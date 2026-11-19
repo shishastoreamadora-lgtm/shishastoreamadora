@@ -279,6 +279,16 @@
       ? `<span class="side__emerg-ico">✅</span><span><b>Essências escondidas</b><small>Tocar para voltar a mostrar</small></span>`
       : `<span class="side__emerg-ico">🚨</span><span><b>Emergência</b><small>Esconder essências já</small></span>`;
   }
+  // sinal direto para todas as lojas abertas (js/vigia.js) confirmarem e recarregarem já
+  async function avisarLojas() {
+    if (!LIVE || !sb) return;
+    try {
+      const ch = sb.channel("loja-vigia");
+      await new Promise((res) => { ch.subscribe((s) => { if (s === "SUBSCRIBED") res(); }); setTimeout(res, 4000); });
+      await ch.send({ type: "broadcast", event: "emergencia", payload: { t: Date.now() } });
+      setTimeout(() => sb.removeChannel(ch), 1500);
+    } catch (e) { console.warn("Sinal direto falhou; as lojas atualizam na verificação seguinte.", e); }
+  }
   $("#emerg")?.addEventListener("click", async () => {
     const on = !!db.store.ocultarEssencias;
     const msg = on
@@ -288,6 +298,7 @@
     const b = $("#emerg"); b.disabled = true;
     if (on) delete db.store.ocultarEssencias; else db.store.ocultarEssencias = true;
     await save(on ? "Essências visíveis outra vez em todos os dispositivos" : "Emergência ativada: essências escondidas em todos os dispositivos");
+    await avisarLojas();
     b.disabled = false;
     if (route() === "loja") views.loja(); else pintarEmerg();
   });
@@ -1157,7 +1168,7 @@
     });
     $("#mostrarEss").addEventListener("change", (e) => {
       if (e.target.checked) delete db.store.ocultarEssencias; else db.store.ocultarEssencias = true;
-      save(e.target.checked ? "Essências visíveis no site" : "Essências escondidas do site"); views.loja(); pintarEmerg();
+      Promise.resolve(save(e.target.checked ? "Essências visíveis no site" : "Essências escondidas do site")).then(avisarLojas); views.loja(); pintarEmerg();
     });
     $("#changePass")?.addEventListener("click", async () => {
       const pw = $("#newPass").value;
