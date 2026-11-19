@@ -263,9 +263,34 @@
     $("#newOrders").textContent = n; $("#newOrders").hidden = !n;
     $("#newOrders2").textContent = n; $("#newOrders2").hidden = !n;
     const nr = pendingReviews(); $("#newReviews").textContent = nr; $("#newReviews").hidden = !nr;
+    pintarEmerg();
     window.scrollTo(0, 0);
   }
   window.addEventListener("hashchange", () => { closePanel(); render(); });
+
+  /* ---------- Botão de emergência: esconde as essências em todos os dispositivos ----------
+     Usa o mesmo interruptor de "Dados da loja" (store.ocultarEssencias). A loja aberta em
+     qualquer telemóvel/computador recarrega sozinha em poucos segundos (js/vigia.js). */
+  function pintarEmerg() {
+    const b = $("#emerg"); if (!b) return;
+    const on = !!db.store.ocultarEssencias;
+    b.classList.toggle("is-on", on);
+    b.innerHTML = on
+      ? `<span class="side__emerg-ico">✅</span><span><b>Essências escondidas</b><small>Tocar para voltar a mostrar</small></span>`
+      : `<span class="side__emerg-ico">🚨</span><span><b>Emergência</b><small>Esconder essências já</small></span>`;
+  }
+  $("#emerg")?.addEventListener("click", async () => {
+    const on = !!db.store.ocultarEssencias;
+    const msg = on
+      ? "Voltar a MOSTRAR as essências na loja?\n\nTodos os telemóveis e computadores com a loja aberta vão atualizar sozinhos."
+      : "MODO EMERGÊNCIA\n\nEsconder JÁ todas as essências, packs com essências e textos sobre elas?\n\nTodos os telemóveis e computadores com a loja aberta vão atualizar sozinhos em poucos segundos. Nada é apagado.";
+    if (!confirm(msg)) return;
+    const b = $("#emerg"); b.disabled = true;
+    if (on) delete db.store.ocultarEssencias; else db.store.ocultarEssencias = true;
+    await save(on ? "Essências visíveis outra vez em todos os dispositivos" : "Emergência ativada: essências escondidas em todos os dispositivos");
+    b.disabled = false;
+    if (route() === "loja") views.loja(); else pintarEmerg();
+  });
   const views = {};
 
   /* ---------- RESUMO ---------- */
@@ -1132,7 +1157,7 @@
     });
     $("#mostrarEss").addEventListener("change", (e) => {
       if (e.target.checked) delete db.store.ocultarEssencias; else db.store.ocultarEssencias = true;
-      save(e.target.checked ? "Essências visíveis no site" : "Essências escondidas do site"); views.loja();
+      save(e.target.checked ? "Essências visíveis no site" : "Essências escondidas do site"); views.loja(); pintarEmerg();
     });
     $("#changePass")?.addEventListener("click", async () => {
       const pw = $("#newPass").value;

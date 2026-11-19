@@ -466,3 +466,14 @@ table.t { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .alert-dom b { font-size: 15px; color: #991b1b; }
 .alert-dom__go { font-weight: 600; font-size: 13px; color: #b91c1c; }
 .alert-dom:hover { background: #fee2e2; }
+
+/* Botão de emergência (menu lateral) */
+.side__emerg { border: 1px solid #7f1d1d; background: #3b0d0d; color: #fecaca; margin-bottom: 6px; cursor: pointer; font: inherit; }
+.side__emerg:hover { background: #5b1414; color: #fff; }
+.side__emerg span:last-child { display: grid; line-height: 1.25; }
+.side__emerg b { font-size: 14px; color: #fff; }
+.side__emerg small { font-size: 12px; opacity: .85; font-weight: 400; }
+.side__emerg-ico { font-size: 18px; width: 20px; text-align: center; }
+.side__emerg.is-on { border-color: #166534; background: #0f2e1b; color: #bbf7d0; }
+.side__emerg.is-on:hover { background: #14532d; }
+.side__emerg:disabled { opacity: .6; cursor: wait; }

@@ -98,6 +98,8 @@ window.SS_FAQ = [
         a: "A lei obriga a mostrá-los na loja online (Termos e Política de privacidade). <b>Preenche-os uma vez</b>; enquanto estiverem vazios, essas páginas mostram espaços em branco." },
       { q: "O que faz o interruptor “Mostrar as essências no site”?",
         a: "A Lei do Tabaco proíbe vender e anunciar tabaco pela internet. Se o desligares, o site <b>esconde</b> as essências, os packs que as incluem e as frases sobre elas. <b>Nada é apagado</b>: continuam no painel e voltam com um toque." },
+      { q: "Para que serve o botão vermelho “🚨 Emergência”?",
+        a: "É o atalho rápido do interruptor das essências. Com um toque (e uma confirmação) o site <b>esconde já</b> as essências, os packs com essências e os textos sobre elas, e <b>todos os telemóveis e computadores que tenham a loja aberta atualizam sozinhos</b> em poucos segundos. O botão fica verde enquanto estiverem escondidas; toca outra vez para as voltar a mostrar. Nada é apagado." },
       { q: "Quando tenho de renovar o domínio (o endereço da loja)?",
         a: "Uma vez por ano. <b>20 dias antes</b> de expirar aparece um aviso vermelho no <b>Resumo</b> e chega um email à conta da loja. Paga a renovação no site onde o domínio está registado e depois, em <b>Dados da loja → Domínio da loja</b>, toca em <b>“Já renovei (+1 ano)”</b>. Se não renovares, a loja sai do ar.", ir: ["#/loja", "Ir para Dados da loja"] },
       { q: "Como mudo a palavra-passe do painel?",
