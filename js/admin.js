@@ -144,7 +144,7 @@
   const pendingReviews = () => reviews.filter(r => !r.aprovado).length;
 
   /* ---------- Domínio: aviso de renovação (20 dias antes) ---------- */
-  const DOMINIO_PADRAO = { nome: "shishastoreamadora.pt", expira: "2027-11-17", registador: "dominios.pt" };
+  const DOMINIO_PADRAO = { nome: "shishastoreamadora.pt", expira: "2027-11-18", registador: "dominios.pt" };
   const AVISO_DIAS = 20;
   const dominio = () => ({ ...DOMINIO_PADRAO, ...(db.store.dominio || {}) });
   const diasDominio = () => {
