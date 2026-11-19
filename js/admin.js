@@ -1133,6 +1133,7 @@
           </div></div></div>
           <div class="card"><div class="card__head"><h3>Essências na loja online</h3></div><div class="card__body"><div class="form">
             <label class="switch"><input type="checkbox" id="mostrarEss" ${s.ocultarEssencias ? "" : "checked"}><i></i><span><b>Mostrar as essências no site</b><small>${s.ocultarEssencias ? "Escondidas: o site não mostra essências, packs com essências nem frases sobre elas." : "Visíveis no site."}</small></span></label>
+            <label class="switch"><input type="checkbox" id="precoEss" ${s.precoEssencias ? "checked" : ""}><i></i><span><b>Mostrar os preços das essências</b><small>${s.precoEssencias ? "Os preços aparecem no site." : "Sem preço: o site mostra \"Sob consulta\" e o cliente pergunta na encomenda."}</small></span></label>
             <small class="muted">A Lei do Tabaco (Lei 37/2007, art. 15.º e 16.º) proíbe vender e anunciar tabaco e produtos à base de plantas para fumar pela internet. Desligar esconde-as do site sem as apagar: continuam aqui no painel e voltam com um toque.</small>
           </div></div></div>
           <div class="card"><div class="card__head"><h3>Segurança</h3></div><div class="card__body"><div class="form">
@@ -1165,6 +1166,10 @@
       const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       if (!confirm(`Confirmas que já pagaste a renovação? A nova data de expiração passa a ${dataLonga(iso)}.`)) return;
       guardarDominio(iso, "Renovação registada. Próximo aviso: 20 dias antes de " + dataLonga(iso));
+    });
+    $("#precoEss").addEventListener("change", (e) => {
+      if (e.target.checked) db.store.precoEssencias = true; else delete db.store.precoEssencias;
+      save(e.target.checked ? "Preços das essências visíveis no site" : "Essências sem preço (Sob consulta)"); views.loja();
     });
     $("#mostrarEss").addEventListener("change", (e) => {
       if (e.target.checked) delete db.store.ocultarEssencias; else db.store.ocultarEssencias = true;

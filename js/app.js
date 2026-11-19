@@ -23,6 +23,9 @@ SSDB.ready.then(() => {
     }
     ESSENCIAS.splice(0, ESSENCIAS.length);
   }
+  /* ---------- Preços das essências (painel → Dados da loja) ----------
+     Por defeito escondidos: a loja mostra "Sob consulta" e o cliente pergunta o preço na encomenda. */
+  if (!STORE.precoEssencias) ESSENCIAS.forEach(e => { e.precos = Object.fromEntries(Object.keys(e.precos || {}).map(k => [k, null])); });
 
   /* ---------- Catálogo unificado ---------- */
   const tamanho = (cm) => cm <= 30 ? "mini" : cm <= 45 ? "medio" : "grande";
@@ -665,6 +668,9 @@ SSDB.ready.then(() => {
      CARRINHO / FAVORITOS
      ========================================================= */
   function priceOf(item) { const p = byId[item.id]; return item.variant && p.precos ? p.precos[item.variant] : p.preco; }
+  // linhas sem preço (ex.: essências) aparecem como "Sob consulta" e não contam para o total
+  const lineTotal = (c) => { const v = priceOf(c); return v == null ? null : v * c.qty; };
+  const totalTxt = (total) => cart.some(c => priceOf(c) == null) ? (total ? `${eur(total)} + sob consulta` : "Sob consulta") : eur(total);
   function saveCart() { store.set("ss_cart", cart); updateBadges(); }
   function addToCart(id, variant) {
     const ex = cart.find(c => c.id === id && c.variant === (variant || null));
@@ -700,10 +706,10 @@ SSDB.ready.then(() => {
         <div class="line"><a class="line__img" href="#/p/${p.id}">${safeImg(ci?.img) ? `<img src="${safeImg(ci.img)}" alt="">` : img(p)}</a>
           <div class="line__info"><strong>${p.nome}</strong><span class="muted">${p.marca}${c.variant ? " · " + (ci ? "Cor: " : "") + tx(c.variant) : ""}</span>
             <div class="qty"><button data-qty="${idx}" data-d="-1" aria-label="Menos">−</button><span>${c.qty}</span><button data-qty="${idx}" data-d="1" aria-label="Mais">+</button></div></div>
-          <strong>${eur((priceOf(c) || 0) * c.qty)}</strong></div>`; }).join("")
+          <strong>${eur(lineTotal(c))}</strong></div>`; }).join("")
         : `<p class="empty">O carrinho está vazio.</p><a class="btn btn--dark" href="#/shishas">Ver shishas</a>`;
       foot.innerHTML = cart.length ? `
-        <div class="total"><span>Total</span><strong>${eur(total)}</strong></div>
+        <div class="total"><span>Total</span><strong>${totalTxt(total)}</strong></div>
         <div class="checkout">
           <input id="ckNome" type="text" autocomplete="name" placeholder="O teu nome" maxlength="60" value="${tx(cliente.nome || "")}">
           <input id="ckTel" type="tel" autocomplete="tel" inputmode="tel" placeholder="Telemóvel (ex.: 912 345 678)" maxlength="20" value="${tx(cliente.tel || "")}">
@@ -715,8 +721,8 @@ SSDB.ready.then(() => {
     open($("#cartDrawer"));
   }
   function waMessage(total, cli = {}) {
-    const lines = cart.map(c => { const p = byId[c.id]; return `• ${c.qty}x ${p.nome}${c.variant ? ` (${coresOf(p).some(x => x.nome === c.variant) ? "cor " : ""}${c.variant})` : ""} — ${eur((priceOf(c) || 0) * c.qty)}`; });
-    return `Olá ${STORE.nome}! Gostaria de encomendar:\n${lines.join("\n")}\n\nTotal: ${eur(total)}\nLevantamento na loja.${cli.nome ? `\n\nNome: ${cli.nome}\nTelemóvel: ${cli.tel}` : ""}`;
+    const lines = cart.map(c => { const p = byId[c.id]; return `• ${c.qty}x ${p.nome}${c.variant ? ` (${coresOf(p).some(x => x.nome === c.variant) ? "cor " : ""}${c.variant})` : ""} — ${eur(lineTotal(c))}`; });
+    return `Olá ${STORE.nome}! Gostaria de encomendar:\n${lines.join("\n")}\n\nTotal: ${totalTxt(total)}\nLevantamento na loja.${cli.nome ? `\n\nNome: ${cli.nome}\nTelemóvel: ${cli.tel}` : ""}`;
   }
   // Dados do cliente (guardados só no telemóvel dele, para a próxima encomenda)
   let cliente = store.get("ss_cliente", {});
