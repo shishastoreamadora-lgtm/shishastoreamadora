@@ -6,12 +6,12 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://images.unsplash.com https://*.supabase.co; connect-src 'self' data: https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <script src="js/frame-guard.js?v=20261119d"></script>
+  <script src="js/frame-guard.js?v=20261120a"></script>
   <title>Gestão · Shisha Store</title>
   <link rel="icon" type="image/png" href="img/logo-icon.png">
   <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/fonts.css?v=20261119d">
-  <link rel="stylesheet" href="css/admin.css?v=20261119d">
+  <link rel="stylesheet" href="css/fonts.css?v=20261120a">
+  <link rel="stylesheet" href="css/admin.css?v=20261120a">
 </head>
 <body>
 
@@ -20,6 +20,10 @@
     <form class="login__card" id="loginForm">
       <img src="img/logo-h.png" alt="Shisha Store" class="login__logo">
       <h1>Área de gestão</h1>
+      <div class="login__roles" role="tablist" aria-label="Tipo de acesso">
+        <button type="button" role="tab" data-papel="dono" class="is-on">👑 Dono</button>
+        <button type="button" role="tab" data-papel="equipa">👥 Equipa</button>
+      </div>
       <div id="loginLive" hidden>
         <p class="muted">Entra com o teu email e palavra-passe.</p>
         <input type="email" id="email" class="login__field" placeholder="Email" autocomplete="username">
@@ -29,6 +33,10 @@
         <p class="muted">Introduz o PIN para gerir a loja.</p>
         <input type="password" inputmode="numeric" id="pin" placeholder="PIN" maxlength="8" autocomplete="off">
         <p class="login__hint">Demonstração · PIN: <b>1234</b></p>
+      </div>
+      <div id="loginEquipa" hidden>
+        <p class="muted">Escreve o teu código da equipa.</p>
+        <input type="password" inputmode="numeric" id="codigo" placeholder="Código" maxlength="8" autocomplete="off">
       </div>
       <p class="login__err" id="loginErr" hidden></p>
       <button class="btn btn--dark btn--block" type="submit" id="loginBtn">Entrar</button>
@@ -47,11 +55,13 @@
         <a href="#/packs" data-nav="packs"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M3 12h18M12 8v13"/><path d="M12 8c-2-4-6-4-6-1.5S10 8 12 8zm0 0c2-4 6-4 6-1.5S14 8 12 8z"/></svg>Packs</a>
         <a href="#/encomendas" data-nav="encomendas"><svg viewBox="0 0 24 24"><path d="M6 7h12l-1 13H7L6 7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>Encomendas <span class="side__badge" id="newOrders" hidden>0</span></a>
         <a href="#/opinioes" data-nav="opinioes"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>Opiniões <span class="side__badge" id="newReviews" hidden>0</span></a>
-        <a href="#/loja" data-nav="loja"><svg viewBox="0 0 24 24"><path d="M4 9l1-5h14l1 5M4 9v11h16V9M4 9h16M9 20v-6h6v6"/></svg>Dados da loja</a>
-        <a href="#/dados" data-nav="dados"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 17v3h16v-3"/></svg>Cópias de segurança</a>
+        <a href="#/loja" data-nav="loja" data-dono><svg viewBox="0 0 24 24"><path d="M4 9l1-5h14l1 5M4 9v11h16V9M4 9h16M9 20v-6h6v6"/></svg>Dados da loja</a>
+        <a href="#/equipa" data-nav="equipa" data-dono><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.5a5 5 0 0 1 5.5 5.5"/></svg>Equipa</a>
+        <a href="#/dados" data-nav="dados" data-dono><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 17v3h16v-3"/></svg>Cópias de segurança</a>
         <a href="#/ajuda" data-nav="ajuda"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/></svg>Perguntas frequentes</a>
       </nav>
       <div class="side__foot">
+        <div class="side__who" id="who"></div>
         <button class="side__link side__emerg" id="emerg" type="button"></button>
         <a href="index.html" target="_blank" class="side__link"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v6H4V6h6"/></svg>Ver loja</a>
         <button class="side__link" id="logout"><svg viewBox="0 0 24 24"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg>Sair</button>
@@ -90,12 +100,12 @@
 
   <div class="toast" id="toast"></div>
 
-  <script src="js/admin-boot.js?v=20261119d"></script>
+  <script src="js/admin-boot.js?v=20261120a"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
-  <script src="js/data.js?v=20261119d"></script>
-  <script src="js/config.js?v=20261119d"></script>
-  <script src="js/store-data.js?v=20261119d"></script>
-  <script src="js/admin-faq.js?v=20261119d"></script>
-  <script src="js/admin.js?v=20261119d"></script>
+  <script src="js/data.js?v=20261120a"></script>
+  <script src="js/config.js?v=20261120a"></script>
+  <script src="js/store-data.js?v=20261120a"></script>
+  <script src="js/admin-faq.js?v=20261120a"></script>
+  <script src="js/admin.js?v=20261120a"></script>
 </body>
 </html>

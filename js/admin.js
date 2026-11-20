@@ -45,6 +45,15 @@
   const sb = LIVE ? window.supabase.createClient(SSDB.config.SUPABASE_URL, SSDB.config.SUPABASE_ANON_KEY) : null;
   let knownIds = new Set();      // ids que existem na base de dados (para saber o que apagar)
   let saving = Promise.resolve();
+  // Só se enviam as linhas que mudaram: duas pessoas a trabalhar ao mesmo tempo não se apagam uma à outra
+  let lastRows = new Map(), lastStore = null;
+  const stable = (v) => JSON.stringify(v, (_k, x) => x && typeof x === "object" && !Array.isArray(x) ? Object.keys(x).sort().reduce((o, k) => (o[k] = x[k], o), {}) : x);
+  const rowKey = (r) => stable([r.cat, r.pos, r.data]);
+
+  /* ---------- Dono / Equipa ---------- */
+  let PAPEL = null, QUEM = "";                 // "dono" | "equipa"
+  const EQUIPA = () => PAPEL === "equipa";
+  const ROTAS_DONO = ["loja", "dados", "equipa"];
 
   const rowsFromDb = () => Object.keys(CATS).flatMap(cat => db[cat].map((p, pos) => { const { id, ...data } = p; return { id, cat, pos, data }; }));
   async function loadRemote() {
@@ -59,12 +68,13 @@
       Object.keys(CATS).forEach(k => db[k] = []);
       cat.data.forEach(r => { if (db[r.cat]) db[r.cat].push({ ...r.data, id: r.id }); });
       knownIds = new Set(cat.data.map(r => r.id));
+      lastRows = new Map(cat.data.map(r => [r.id, rowKey(r)]));
     } else {
       // primeira vez: copia o catálogo do site para a base de dados
       await syncRemote(); toast("Catálogo copiado para a base de dados");
     }
-    if (set.data?.store) db.store = { ...db.store, ...set.data.store };
-    else await sb.from("settings").upsert({ id: 1, store: publicStore() });
+    if (set.data?.store) { db.store = { ...db.store, ...set.data.store }; lastStore = stable(publicStore()); }
+    else if (!EQUIPA()) { await sb.from("settings").upsert({ id: 1, store: publicStore() }); lastStore = stable(publicStore()); }
     if (!ord.error) orders = ord.data.map(o => ({ n: o.n, data: o.created_at, items: o.items, total: Number(o.total), estado: o.estado, canal: o.canal, exemplo: o.exemplo, cliente: o.cliente }));
   }
   const publicStore = () => { const s = { ...db.store }; delete s.pin; return s; };
@@ -96,14 +106,28 @@
   async function syncRemote() {
     await uploadPhotos();
     const rows = rowsFromDb();
-    const up = await sb.from("catalog").upsert(rows);
-    if (up.error) throw up.error;
+    const changed = rows.filter(r => lastRows.get(r.id) !== rowKey(r));
+    if (changed.length) {
+      const up = await sb.from("catalog").upsert(changed);
+      if (up.error) throw up.error;
+      changed.forEach(r => lastRows.set(r.id, rowKey(r)));
+    }
     const ids = new Set(rows.map(r => r.id));
     const gone = [...knownIds].filter(id => !ids.has(id));
-    if (gone.length) { const del = await sb.from("catalog").delete().in("id", gone); if (del.error) throw del.error; }
+    if (gone.length) {
+      if (EQUIPA()) throw new Error("Só o dono pode apagar produtos");
+      const del = await sb.from("catalog").delete().in("id", gone); if (del.error) throw del.error;
+      gone.forEach(id => lastRows.delete(id));
+    }
     knownIds = ids;
-    const st = await sb.from("settings").upsert({ id: 1, store: publicStore(), updated_at: new Date().toISOString() });
-    if (st.error) throw st.error;
+    const sj = stable(publicStore());
+    if (sj !== lastStore) {
+      const st = lastStore === null
+        ? await sb.from("settings").upsert({ id: 1, store: publicStore(), updated_at: new Date().toISOString() })
+        : await sb.from("settings").update({ store: publicStore(), updated_at: new Date().toISOString() }).eq("id", 1);
+      if (st.error) throw st.error;
+      lastStore = sj;
+    }
   }
 
   function save(msg = "Alterações guardadas") {
@@ -210,26 +234,89 @@
      - Modo demonstração: PIN (não é segurança real)
      ========================================================= */
   let session = null;
-  const pinOk = () => LIVE ? !!session : sessionStorage.getItem("ss_admin") === "1";
+  let loginPapel = "dono";                       // separador escolhido no ecrã de entrada
+  const demoEquipa = () => ls.get("ss_equipa", [{ user_id: "demo-1", nome: "Equipa (demo)", codigo: "567890", criado: new Date().toISOString() }]);
+  const pinOk = () => LIVE ? !!session : !!sessionStorage.getItem("ss_admin");
+  function pintarLogin() {
+    const eq = loginPapel === "equipa";
+    $$("[data-papel]").forEach(b => { b.classList.toggle("is-on", b.dataset.papel === loginPapel); b.setAttribute("aria-selected", b.dataset.papel === loginPapel); });
+    $("#loginLive").hidden = !LIVE || eq; $("#loginDemo").hidden = LIVE || eq; $("#loginEquipa").hidden = !eq;
+    $("#loginErr").hidden = true;
+    setTimeout(() => (eq ? $("#codigo") : LIVE ? $("#email") : $("#pin")).focus(), 50);
+  }
   function showLogin() {
     $("#login").hidden = false; $("#app").hidden = true;
-    $("#loginLive").hidden = !LIVE; $("#loginDemo").hidden = LIVE;
-    setTimeout(() => (LIVE ? $("#email") : $("#pin")).focus(), 50);
+    pintarLogin();
   }
+  $$("[data-papel]").forEach(b => b.addEventListener("click", () => { loginPapel = b.dataset.papel; pintarLogin(); }));
+
+  // Descobre se quem entrou é o dono ou a equipa (a base de dados é que manda)
+  async function lerPapel() {
+    if (!LIVE) {
+      const v = sessionStorage.getItem("ss_admin");
+      PAPEL = v === "equipa" ? "equipa" : "dono"; QUEM = PAPEL === "dono" ? "Dono" : (sessionStorage.getItem("ss_quem") || "Equipa");
+      return true;
+    }
+    const r = await sb.from("perfis").select("papel,nome").eq("user_id", session.user.id).maybeSingle();
+    if (r.error || !r.data) return false;
+    PAPEL = r.data.papel; QUEM = PAPEL === "dono" ? "Dono" : (r.data.nome || "Equipa");
+    return true;
+  }
+  function pintarPapel() {
+    document.body.classList.toggle("is-equipa", EQUIPA());
+    const w = $("#who"); if (w) w.innerHTML = !PAPEL ? "" : EQUIPA() ? `<span>👥</span><span><b>${esc(QUEM)}</b><small>Equipa</small></span>` : `<span>👑</span><span><b>Dono</b><small>Acesso total</small></span>`;
+  }
+  function sairLocal() { sessionStorage.removeItem("ss_admin"); sessionStorage.removeItem("ss_quem"); }
   async function showApp() {
     $("#login").hidden = true; $("#app").hidden = false;
+    $("#view").innerHTML = `<div class="empty">A carregar a loja…</div>`;
+    let ok = false;
+    try { ok = await lerPapel(); } catch (err) { console.error(err); }
+    if (!ok) {
+      if (LIVE) await sb.auth.signOut({ scope: "local" }).catch(() => {});
+      session = null; sairLocal();
+      showLogin(); return loginError("Esta conta não tem acesso ao painel.");
+    }
+    pintarPapel();
     if (LIVE) {
-      $("#view").innerHTML = `<div class="empty">A carregar a loja…</div>`;
       try { await loadRemote(); } catch (err) { console.error(err); $("#view").innerHTML = `<div class="empty">Não foi possível ligar à base de dados.<br>Verifica a internet e recarrega a página.</div>`; return; }
     }
     render();
   }
   function loginError(msg) { const e = $("#loginErr"); e.textContent = msg; e.hidden = false; const c = $(".login__card"); c.classList.remove("shake"); void c.offsetWidth; c.classList.add("shake"); }
   let tries = 0;
+  async function entrarEquipa() {
+    const codigo = $("#codigo").value.trim();
+    $("#codigo").value = "";
+    if (!/^\d{6,8}$/.test(codigo)) return loginError("O código tem 6 a 8 números.");
+    if (++tries > 5) { loginError("Demasiadas tentativas. Espera um minuto."); setTimeout(() => tries = 0, 60000); return; }
+    if (!LIVE) {
+      const m = demoEquipa().find(x => x.codigo === codigo);
+      if (!m) return loginError("Código incorreto. Tenta outra vez.");
+      sessionStorage.setItem("ss_admin", "equipa"); sessionStorage.setItem("ss_quem", m.nome);
+      tries = 0; $("#loginErr").hidden = true; return showApp();
+    }
+    const btn = $("#loginBtn"); btn.disabled = true; btn.textContent = "A entrar…";
+    try {
+      const res = await fetch(`${SSDB.config.SUPABASE_URL}/functions/v1/equipa`, {
+        method: "POST", headers: { "Content-Type": "application/json", apikey: SSDB.config.SUPABASE_ANON_KEY },
+        body: JSON.stringify({ acao: "entrar", codigo }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.access_token) {
+        return loginError(j.erro === "bloqueado" ? "Demasiadas tentativas erradas. Espera 15 minutos." : j.erro === "errado" ? "Código incorreto. Tenta outra vez." : "Não foi possível entrar. Verifica a internet.");
+      }
+      const { data, error } = await sb.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token });
+      if (error) return loginError("Não foi possível entrar. Tenta outra vez.");
+      session = data.session; tries = 0; $("#loginErr").hidden = true; showApp();
+    } catch (err) { console.error(err); loginError("Não foi possível entrar. Verifica a internet."); }
+    finally { btn.disabled = false; btn.textContent = "Entrar"; }
+  }
   $("#loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (loginPapel === "equipa") return entrarEquipa();
     if (!LIVE) {
-      if ($("#pin").value === String(db.store.pin || "1234")) { sessionStorage.setItem("ss_admin", "1"); $("#loginErr").hidden = true; showApp(); }
+      if ($("#pin").value === String(db.store.pin || "1234")) { sessionStorage.setItem("ss_admin", "dono"); $("#loginErr").hidden = true; showApp(); }
       else { $("#pin").value = ""; loginError("PIN incorreto. Tenta outra vez."); }
       return;
     }
@@ -242,10 +329,11 @@
     session = data.session; tries = 0; $("#loginErr").hidden = true; $("#password").value = ""; showApp();
   });
   $("#logout").addEventListener("click", async () => {
-    if (LIVE) { await sb.auth.signOut(); session = null; } else sessionStorage.removeItem("ss_admin");
+    if (LIVE) { await sb.auth.signOut({ scope: "local" }).catch(() => {}); session = null; } else sairLocal();
+    PAPEL = null; pintarPapel();
     location.hash = ""; showLogin();
   });
-  if (LIVE) sb.auth.onAuthStateChange((_ev, s) => { session = s; if (!s && !$("#app").hidden) showLogin(); });
+  if (LIVE) sb.auth.onAuthStateChange((_ev, s) => { session = s; if (!s && !$("#app").hidden) { PAPEL = null; pintarPapel(); showLogin(); } });
 
   /* =========================================================
      ROUTER
@@ -254,8 +342,9 @@
   function route() { return (location.hash.replace(/^#\/?/, "").split("?")[0] || "painel"); }
   function setHeader(title, sub = "", actions = "") { $("#pageTitle").textContent = title; $("#pageSub").textContent = sub; $("#topActions").innerHTML = actions; }
   function render() {
-    if (!pinOk()) return showLogin();
+    if (!pinOk() || !PAPEL) return showLogin();
     const r = route();
+    if (EQUIPA() && ROTAS_DONO.includes(r)) { location.hash = "#/painel"; return; }
     $$("[data-nav]").forEach(a => a.classList.toggle("is-active", a.dataset.nav === r));
     $("#side").classList.remove("is-open");
     (views[r] || views.painel)();
@@ -279,6 +368,15 @@
       ? `<span class="side__emerg-ico">✅</span><span><b>Essências escondidas</b><small>Tocar para voltar a mostrar</small></span>`
       : `<span class="side__emerg-ico">🚨</span><span><b>Emergência</b><small>Esconder essências já</small></span>`;
   }
+  async function mudarEmergencia(ligar, msg) {
+    if (!LIVE) { if (ligar) db.store.ocultarEssencias = true; else delete db.store.ocultarEssencias; save(msg); return true; }
+    await saving;
+    const r = await sb.rpc("loja_emergencia", { p_on: ligar });
+    if (r.error) { console.error(r.error); toast("Não foi possível mudar. Verifica a internet e tenta outra vez.", true); return false; }
+    if (ligar) db.store.ocultarEssencias = true; else delete db.store.ocultarEssencias;
+    if (lastStore !== null) { const st = JSON.parse(lastStore); if (ligar) st.ocultarEssencias = true; else delete st.ocultarEssencias; lastStore = stable(st); }
+    toast(msg); return true;
+  }
   // sinal direto para todas as lojas abertas (js/vigia.js) confirmarem e recarregarem já
   async function avisarLojas() {
     if (!LIVE || !sb) return;
@@ -296,9 +394,8 @@
       : "MODO EMERGÊNCIA\n\nEsconder JÁ todas as essências, packs com essências e textos sobre elas?\n\nTodos os telemóveis e computadores com a loja aberta vão atualizar sozinhos em poucos segundos. Nada é apagado.";
     if (!confirm(msg)) return;
     const b = $("#emerg"); b.disabled = true;
-    if (on) delete db.store.ocultarEssencias; else db.store.ocultarEssencias = true;
-    await save(on ? "Essências visíveis outra vez em todos os dispositivos" : "Emergência ativada: essências escondidas em todos os dispositivos");
-    await avisarLojas();
+    const ok = await mudarEmergencia(!on, on ? "Essências visíveis outra vez em todos os dispositivos" : "Emergência ativada: essências escondidas em todos os dispositivos");
+    if (ok) await avisarLojas();
     b.disabled = false;
     if (route() === "loja") views.loja(); else pintarEmerg();
   });
@@ -342,7 +439,7 @@
         <a href="#/produtos?novo" class="quick__item"><span class="quick__ic" style="background:#111;color:#fff">${I.plus}</span><b>Adicionar produto</b><small>Nova shisha, sabor ou acessório</small></a>
         <a href="#/produtos" class="quick__item"><span class="quick__ic" style="background:#fdf3e1;color:#8c6d3f">${I.euro}</span><b>Mudar preços e stock</b><small>Toca no preço para o alterar</small></a>
         <a href="#/encomendas" class="quick__item"><span class="quick__ic" style="background:#eff6ff;color:#2563eb">${I.bag}</span><b>Ver encomendas</b><small>${novas ? `<span class="dot-new"></span>${novas} nova${novas > 1 ? "s" : ""} à espera` : "Nenhuma nova"}</small></a>
-        <a href="#/loja" class="quick__item"><span class="quick__ic" style="background:#f0fdf4;color:#16a34a">${I.clock}</span><b>Horário e contactos</b><small>Morada, telefone e avisos</small></a>
+        <a href="#/loja" class="quick__item" data-dono><span class="quick__ic" style="background:#f0fdf4;color:#16a34a">${I.clock}</span><b>Horário e contactos</b><small>Morada, telefone e avisos</small></a>
         <a href="#/inicio" class="quick__item"><span class="quick__ic" style="background:#f3e8ff;color:#7c3aed">🖼️</span><b>Página inicial</b><small>Fotos do topo, faixa e categorias</small></a>
       </div>
       <h2 class="h-sec">Como vai a loja</h2>
@@ -359,7 +456,7 @@
             ${valid.length ? `<div class="bars">${days.map((d, i) => `
               <div class="bar ${i === 6 ? "is-today" : ""}"><div class="bar__fill" style="height:${Math.round(perDay[i] / max * 100)}%">${perDay[i] ? `<span>${Math.round(perDay[i])}€</span>` : ""}</div>
               <span class="bar__label">${i === 6 ? "Hoje" : d.toLocaleDateString("pt-PT", { weekday: "short" }).replace(".", "")}</span></div>`).join("")}</div>`
-            : `<div class="empty">Ainda não há encomendas.<br>As encomendas feitas no carrinho da loja aparecem aqui.<br><button class="btn btn--gold btn--sm" data-demo-orders>${I.plus} Gerar encomendas de exemplo</button></div>`}
+            : `<div class="empty">Ainda não há encomendas.<br>As encomendas feitas no carrinho da loja aparecem aqui.<br><button class="btn btn--gold btn--sm" data-dono data-demo-orders>${I.plus} Gerar encomendas de exemplo</button></div>`}
           </div>
         </div>
         <div class="card">
@@ -435,7 +532,7 @@
         <td class="td-act"><div class="actions">
           <button class="act" data-edit="${p.id}">${I.edit}<span>Editar</span></button>
           <button class="act" data-dup="${p.id}" title="Criar uma cópia para um produto parecido">${I.copy}<span>Duplicar</span></button>
-          <button class="act act--del" data-del="${p.id}">${I.trash}<span>Apagar</span></button>
+          <button class="act act--del" data-dono data-del="${p.id}">${I.trash}<span>Apagar</span></button>
         </div></td>
       </tr>`).join("") : `<tr><td colspan="7"><div class="empty">Nenhum produto encontrado.</div></td></tr>`;
   }
@@ -542,7 +639,7 @@
         </details>
       </form>`;
     $("#panelFoot").innerHTML = `
-      ${isNew ? "" : `<button class="btn btn--danger spacer" data-del="${p.id}">${I.trash} Apagar</button>`}
+      ${isNew ? "" : `<button class="btn btn--danger spacer" data-dono data-del="${p.id}">${I.trash} Apagar</button>`}
       <button class="btn btn--ghost" data-close>Cancelar</button>
       <button class="btn btn--dark" id="saveProd">${I.check} Guardar</button>`;
 
@@ -670,7 +767,7 @@
             <div class="actions" style="justify-content:flex-start">
               <button class="act" data-edit="${pk.id}">${I.edit}<span>Editar</span></button>
               <button class="act" data-dup="${pk.id}">${I.copy}<span>Duplicar</span></button>
-              <button class="act act--del" data-del="${pk.id}">${I.trash}<span>Apagar</span></button>
+              <button class="act act--del" data-dono data-del="${pk.id}">${I.trash}<span>Apagar</span></button>
             </div>
           </div>
         </div>`; }).join("")}
@@ -723,7 +820,7 @@
         </div>
       </form>`;
     $("#panelFoot").innerHTML = `
-      ${isNew ? "" : `<button class="btn btn--danger spacer" data-del="${pk.id}">${I.trash} Apagar</button>`}
+      ${isNew ? "" : `<button class="btn btn--danger spacer" data-dono data-del="${pk.id}">${I.trash} Apagar</button>`}
       <button class="btn btn--ghost" data-close>Cancelar</button>
       <button class="btn btn--dark" id="savePack">${I.check} Guardar pack</button>`;
     drawPackChosen(); drawPackList(); drawPackSum();
@@ -974,7 +1071,7 @@
 
   /* ---------- ENCOMENDAS ---------- */
   views.encomendas = () => {
-    setHeader("Encomendas", "Pedidos feitos no carrinho da loja e enviados por WhatsApp.", `<button class="btn btn--ghost" data-demo-orders>${I.plus} Encomendas de exemplo</button>`);
+    setHeader("Encomendas", "Pedidos feitos no carrinho da loja e enviados por WhatsApp.", `<button class="btn btn--ghost" data-dono data-demo-orders>${I.plus} Encomendas de exemplo</button>`);
     const counts = Object.fromEntries(Object.keys(ESTADOS).map(k => [k, orders.filter(o => o.estado === k).length]));
     const list = orders.filter(o => state.estado === "todas" || o.estado === state.estado);
     $("#view").innerHTML = `
@@ -989,7 +1086,7 @@
           <td>${esc(o.items.map(i => `${i.qty}× ${i.nome}${i.variant ? " (" + i.variant + ")" : ""}`).join(", "))}</td>
           <td class="price">${eur(o.total)}</td><td><span class="pill st-${o.estado}">${ESTADOS[o.estado]}</span></td>
           <td><div class="actions"><button class="icon-btn" title="Ver">${I.eye}</button></div></td></tr>`).join("")}</tbody></table>`
-      : `<div class="empty">${orders.length ? "Nenhuma encomenda neste estado." : `Ainda não há encomendas.<br>Quando um cliente carregar em "Encomendar por WhatsApp" na loja, a encomenda aparece aqui.<br><button class="btn btn--gold btn--sm" data-demo-orders>${I.plus} Gerar encomendas de exemplo</button>`}</div>`}</div>`;
+      : `<div class="empty">${orders.length ? "Nenhuma encomenda neste estado." : `Ainda não há encomendas.<br>Quando um cliente carregar em "Encomendar por WhatsApp" na loja, a encomenda aparece aqui.<br><button class="btn btn--gold btn--sm" data-dono data-demo-orders>${I.plus} Gerar encomendas de exemplo</button>`}</div>`}</div>`;
   };
   function openOrder(n) {
     const o = orders.find(x => x.n === +n); if (!o) return;
@@ -1006,7 +1103,7 @@
       <div class="order-total"><span>Total</span><span>${eur(o.total)}</span></div>
       <div class="note" style="margin-top:22px">${I.info}<div>Pagamento e levantamento na loja: ${esc(db.store.morada)}.</div></div>`;
     $("#panelFoot").innerHTML = `
-      <button class="btn btn--danger spacer" data-del-order="${o.n}">${I.trash} Apagar</button>
+      <button class="btn btn--danger spacer" data-dono data-del-order="${o.n}">${I.trash} Apagar</button>
       <a class="btn btn--ghost" target="_blank" rel="noopener" href="https://wa.me/${telWa}?text=${encodeURIComponent(msg)}">${I.wa} ${telWa ? "Avisar cliente" : "Enviar por WhatsApp"}</a>
       <button class="btn btn--dark" data-close>Fechar</button>`;
     $("#panel").classList.add("is-open"); $("#overlay").classList.add("is-on");
@@ -1042,7 +1139,7 @@
   /* ---------- OPINIÕES ---------- */
   const starTxt = (n) => "★".repeat(n) + "☆".repeat(5 - n);
   views.opinioes = () => {
-    setHeader("Opiniões de clientes", "Lê as opiniões e publica as que quiseres. Só aparecem na loja depois de as aprovares.", `<button class="btn btn--dark" data-rv-new>${I.plus} Juntar opinião</button>`);
+    setHeader("Opiniões de clientes", "Lê as opiniões e publica as que quiseres. Só aparecem na loja depois de as aprovares.", `<button class="btn btn--dark" data-dono data-rv-new>${I.plus} Juntar opinião</button>`);
     const tab = state.rev || "pendentes";
     const lists = { pendentes: reviews.filter(r => !r.aprovado), publicadas: reviews.filter(r => r.aprovado), todas: reviews };
     const list = lists[tab];
@@ -1067,7 +1164,7 @@
           <div class="field"><label for="rvr${rv.id}">Resposta da loja <span class="muted">(opcional, aparece por baixo)</span></label><textarea id="rvr${rv.id}" data-rv-reply="${rv.id}" maxlength="400" rows="2" placeholder="Ex.: Obrigado pela visita, ${esc(String(rv.nome).split(" ")[0])}!">${esc(rv.resposta || "")}</textarea></div>
           <div class="rv__act">
             ${rv.aprovado ? `<button class="btn btn--ghost btn--sm" data-rv-hide="${rv.id}">Esconder da loja</button>` : `<button class="btn btn--dark btn--sm" data-rv-ok="${rv.id}">${I.check} Publicar na loja</button>`}
-            <button class="btn btn--danger btn--sm" data-rv-del="${rv.id}">${I.trash} Apagar</button>
+            <button class="btn btn--danger btn--sm" data-dono data-rv-del="${rv.id}">${I.trash} Apagar</button>
           </div>
         </div>`; }).join("")}</div>`
       : `<div class="card"><div class="empty">${tab === "pendentes" ? "Não há opiniões à espera. 👌<br>Quando um cliente deixar uma opinião na loja, aparece aqui." : "Ainda não há opiniões aqui."}</div></div>`}
@@ -1183,8 +1280,8 @@
       save(e.target.checked ? "Preços das essências visíveis no site" : "Essências sem preço (Sob consulta)"); views.loja();
     });
     $("#mostrarEss").addEventListener("change", (e) => {
-      if (e.target.checked) delete db.store.ocultarEssencias; else db.store.ocultarEssencias = true;
-      Promise.resolve(save(e.target.checked ? "Essências visíveis no site" : "Essências escondidas do site")).then(avisarLojas); views.loja(); pintarEmerg();
+      const ligar = !e.target.checked;
+      mudarEmergencia(ligar, ligar ? "Essências escondidas do site" : "Essências visíveis no site").then(ok => { if (ok) avisarLojas(); views.loja(); pintarEmerg(); });
     });
     $("#changePass")?.addEventListener("click", async () => {
       const pw = $("#newPass").value;
@@ -1192,6 +1289,72 @@
       const { error } = await sb.auth.updateUser({ password: pw });
       $("#newPass").value = "";
       toast(error ? "Não foi possível mudar a palavra-passe" : "Palavra-passe alterada", !!error);
+    });
+  };
+
+  /* ---------- EQUIPA (só o dono): códigos de acesso ---------- */
+  const dataCurta = (iso) => iso ? new Date(iso).toLocaleString("pt-PT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Nunca";
+  const codigoNovo = () => { const a = new Uint32Array(1); crypto.getRandomValues(a); return String(100000 + (a[0] % 900000)); };
+  async function equipaApi(acao, extra = {}) {
+    if (!LIVE) {
+      let l = demoEquipa();
+      if (acao === "listar") return { equipa: l };
+      if ((acao === "criar" || acao === "mudar") && l.some(x => x.codigo === extra.codigo)) return { erro: "repetido" };
+      if (acao === "criar") l.push({ user_id: "demo-" + Date.now(), nome: extra.nome, codigo: extra.codigo, criado: new Date().toISOString() });
+      if (acao === "mudar") l = l.map(x => x.user_id === extra.id ? { ...x, codigo: extra.codigo } : x);
+      if (acao === "apagar") l = l.filter(x => x.user_id !== extra.id);
+      ls.set("ss_equipa", l); return { ok: true };
+    }
+    try {
+      if (acao === "listar") { const r = await sb.rpc("equipa_listar"); return r.error ? { erro: "servidor" } : { equipa: r.data }; }
+      const { data: { session: s } } = await sb.auth.getSession();
+      const res = await fetch(`${SSDB.config.SUPABASE_URL}/functions/v1/equipa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SSDB.config.SUPABASE_ANON_KEY, Authorization: `Bearer ${s?.access_token || ""}` },
+        body: JSON.stringify({ acao, ...extra }),
+      });
+      return await res.json().catch(() => ({ erro: "servidor" }));
+    } catch (err) { console.error(err); return { erro: "rede" }; }
+  }
+  const ERROS_EQUIPA = { repetido: "Esse código já está a ser usado. Escolhe outro.", codigo: "O código tem de ter 6 a 8 números.", nome: "Escreve o nome da pessoa.", limite: "Máximo de 20 códigos.", proibido: "Só o dono pode gerir a equipa.", sessao: "A sessão terminou. Entra outra vez.", rede: "Sem internet. Tenta outra vez." };
+  const erroEquipa = (r) => toast(ERROS_EQUIPA[r.erro] || "Não foi possível guardar. Tenta outra vez.", true);
+  views.equipa = async () => {
+    setHeader("Equipa", "Cria um código para cada pessoa da loja. Entram em “Equipa” só com o código.");
+    $("#view").innerHTML = `<div class="empty">A carregar…</div>`;
+    const r = await equipaApi("listar");
+    if (route() !== "equipa") return;
+    const lista = r.equipa || [];
+    $("#view").innerHTML = `
+      <div class="two">
+        <div class="card"><div class="card__head"><h3>Novo código</h3></div><div class="card__body">
+          <form class="form" id="eqForm">
+            <div class="field"><label>Nome da pessoa</label><input name="nome" maxlength="40" placeholder="Ex.: Ana" required></div>
+            <div class="field"><label>Código (6 a 8 números)</label>
+              <div class="row"><input name="codigo" inputmode="numeric" maxlength="8" pattern="\\d{6,8}" value="${codigoNovo()}" required><button type="button" class="btn btn--ghost btn--sm" id="eqGerar">Gerar outro</button></div>
+              <small>Diz o código à pessoa em mão. Depois de guardar, ninguém o consegue ver outra vez — nem tu.</small></div>
+            <button class="btn btn--dark" type="submit">${I.plus} Criar código</button>
+          </form>
+        </div></div>
+        <div class="card"><div class="card__head"><h3>Pessoas com acesso</h3><span class="muted">${lista.length}</span></div><div class="card__body">
+          ${r.erro ? `<p class="muted">Não foi possível carregar a lista.</p>` : lista.length ? `<ul class="list">${lista.map(m => `<li>
+            <span class="thumb" style="background:#111;color:#fff">${esc((m.nome || "?").slice(0, 1).toUpperCase())}</span>
+            <div class="list__main"><strong>${esc(m.nome)}</strong><span>Último acesso: ${esc(dataCurta(m.ultimo_acesso))}</span></div>
+            <div class="actions"><button class="btn btn--ghost btn--sm" data-eq-mudar="${esc(m.user_id)}">Trocar código</button><button class="btn btn--danger btn--sm" data-eq-apagar="${esc(m.user_id)}" data-nome="${esc(m.nome)}">${I.trash} Tirar acesso</button></div>
+          </li>`).join("")}</ul>` : `<p class="muted">Ainda não há códigos. Cria um para cada pessoa da loja.</p>`}
+          <small class="muted">A equipa pode: produtos, fotos, stock, packs, página inicial, encomendas, opiniões e o botão 🚨. Não pode: dados da loja, apagar coisas, cópias de segurança nem esta página.</small>
+        </div></div>
+      </div>`;
+    $("#eqGerar").addEventListener("click", () => { $("#eqForm").elements.codigo.value = codigoNovo(); });
+    $("#eqForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target.elements, nome = f.nome.value.trim(), codigo = f.codigo.value.trim();
+      if (!nome) return toast(ERROS_EQUIPA.nome, true);
+      if (!/^\d{6,8}$/.test(codigo)) return toast(ERROS_EQUIPA.codigo, true);
+      const b = e.target.querySelector("[type=submit]"); b.disabled = true;
+      const res = await equipaApi("criar", { nome, codigo });
+      b.disabled = false;
+      if (!res.ok) return erroEquipa(res);
+      toast(`Código criado para ${nome}`); views.equipa();
     });
   };
 
@@ -1297,6 +1460,7 @@ const PACKS = ${J(db.packs)};
      ========================================================= */
   document.addEventListener("click", (e) => {
     const t = e.target.closest("button, a, [data-edit], [data-order], label"); if (!t) return;
+    if (EQUIPA() && t.closest("[data-dono]")) { e.preventDefault(); return toast("Só o dono pode fazer isto.", true); }
     if (t.matches("[data-close]")) return closePanel();
     if (t.matches("[data-new]")) return openEditor();
     if (t.dataset.edit && !t.closest("[data-toggle]")) return openEditor(t.dataset.edit);
@@ -1385,6 +1549,18 @@ const PACKS = ${J(db.packs)};
       return;
     }
     if (t.matches("[data-demo-orders]")) return demoOrders();
+    if (t.dataset.eqMudar) {
+      const codigo = (prompt("Novo código (6 a 8 números).\nQuem usava o código antigo sai do painel.", codigoNovo()) || "").trim();
+      if (!codigo) return;
+      if (!/^\d{6,8}$/.test(codigo)) return toast(ERROS_EQUIPA.codigo, true);
+      equipaApi("mudar", { id: t.dataset.eqMudar, codigo }).then(r => { if (!r.ok) return erroEquipa(r); toast("Código trocado"); views.equipa(); });
+      return;
+    }
+    if (t.dataset.eqApagar) {
+      if (!confirm(`Tirar o acesso a ${t.dataset.nome}? Sai do painel em todos os aparelhos.`)) return;
+      equipaApi("apagar", { id: t.dataset.eqApagar }).then(r => { if (!r.ok) return erroEquipa(r); toast("Acesso retirado"); views.equipa(); });
+      return;
+    }
     if (t.matches("[data-clear-demo]")) { if (confirm("Apagar todas as encomendas de exemplo?")) clearDemoOrders(); return; }
     if (t.dataset.export === "js") return exportJs();
     if (t.dataset.export === "json") { download(`shisha-store-copia-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ ...db, orders, reviews }, null, 2), "application/json"); return toast("Cópia descarregada"); }

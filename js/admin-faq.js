@@ -17,6 +17,17 @@ window.SS_FAQ = [
     ],
   },
   {
+    ic: "👥", titulo: "Dono e equipa",
+    itens: [
+      { q: "Qual é a diferença entre “Dono” e “Equipa”?",
+        a: "O <b>Dono</b> entra com email e palavra-passe e pode tudo. A <b>Equipa</b> entra só com um código e pode: produtos, fotos, stock, preços, packs, página inicial, encomendas, responder e aprovar opiniões e o botão 🚨. A equipa <b>não</b> pode: mudar os dados da loja, apagar coisas, cópias de segurança nem gerir códigos. Estas regras estão na base de dados, não dá para as contornar." },
+      { q: "Como dou acesso a uma pessoa da loja?",
+        a: "Entra como <b>Dono</b> → <b>Equipa</b>. Escreve o nome da pessoa, usa o código sugerido (ou outro de 6 a 8 números) e carrega em <b>Criar código</b>. Diz o código à pessoa em mão. Ela entra em <b>shishastoreamadora.pt/admin</b> → <b>👥 Equipa</b> → código.", ir: ["#/equipa", "Ir para Equipa"] },
+      { q: "Alguém saiu da loja ou o código foi descoberto. O que faço?",
+        a: "Em <b>Equipa</b>, carrega em <b>Tirar acesso</b> (a pessoa sai logo do painel) ou em <b>Trocar código</b> (o código antigo deixa de funcionar). Os códigos ficam encriptados: ninguém os consegue ver depois de criados." },
+    ],
+  },
+  {
     ic: "📦", titulo: "Produtos",
     itens: [
       { q: "Como mudo o preço de um produto?",
