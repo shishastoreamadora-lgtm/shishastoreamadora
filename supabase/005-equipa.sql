@@ -61,6 +61,8 @@ create table if not exists public.equipa_tentativas (
 create index if not exists equipa_tentativas_t on public.equipa_tentativas (t desc);
 alter table public.equipa_tentativas enable row level security;
 revoke all on public.equipa_tentativas from anon, authenticated;
+-- a função "equipa" (servidor) precisa de ler/escrever estas tabelas
+grant select, insert, update, delete on public.perfis, public.equipa_codigos, public.equipa_tentativas to service_role;
 
 -- Verificar um código (só o servidor — função "equipa" — pode chamar)
 -- Bloqueia: 5 erros do mesmo IP ou 30 erros no total em 15 minutos
